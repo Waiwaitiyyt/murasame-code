@@ -2,14 +2,45 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>丛雨代码工作台</title>
   <link rel="stylesheet" href="desktop.css">
   <link rel="stylesheet" href="workbench.css">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><img src="assets/icon.png"><div><b>丛雨代码</b><small>千恋＊万花 · Murasame Code</small></div></div>
+    <div class="brand-group">
+      <button id="menu-toggle" class="icon-button menu-toggle" aria-label="打开应用菜单" aria-expanded="false">☰</button>
+      <div class="brand"><img src="assets/icon.png"><div><b>丛雨代码</b><small>千恋＊万花 · Murasame Code</small></div></div>
+    </div>
     <div class="top-actions"><button id="new-session">新建会话</button><button id="pet-mode">收进桌宠</button><button id="tray-mode" title="隐藏到托盘">—</button></div>
+    <aside id="app-menu" class="app-menu" hidden>
+      <div class="menu-title">工作台设置</div>
+      <button id="theme-toggle" class="menu-row"><span>外观模式</span><span id="theme-label">浅色</span></button>
+      <div class="menu-section">
+        <div class="menu-section-title">背景图片</div>
+        <div class="background-options">
+          <button class="background-option" data-background="pic01.jpg" title="神社午后"><img src="assets/backgrounds/pic01.jpg" alt="神社午后"><span>神社午后</span></button>
+          <button class="background-option" data-background="pic02.jpg" title="林间微风"><img src="assets/backgrounds/pic02.jpg" alt="林间微风"><span>林间微风</span></button>
+          <button class="background-option" data-background="pic03.jpg" title="庭院相遇"><img src="assets/backgrounds/pic03.jpg" alt="庭院相遇"><span>庭院相遇</span></button>
+          <button class="background-option" data-background="pic06.jpg" title="丛雨日常"><img src="assets/backgrounds/pic06.jpg" alt="丛雨日常"><span>丛雨日常</span></button>
+        </div>
+        <div class="menu-inline-actions"><button id="upload-background">上传图片…</button><button id="clear-background">清除背景</button></div>
+      </div>
+      <div class="menu-section command-section">
+        <div class="menu-section-title">会话命令</div>
+        <button class="command-row" data-command="/help"><code>/help</code><span>显示命令帮助</span></button>
+        <button class="command-row" data-command="/clear"><code>/clear</code><span>清空当前会话</span></button>
+        <button class="command-row" data-command="/config"><code>/config</code><span>配置模型接口</span></button>
+        <button class="command-row" data-command="/lang"><code>/lang</code><span>切换回复语言</span></button>
+        <button class="command-row" data-command="/detail"><code>/detail</code><span>工具输出详细程度</span></button>
+        <button class="command-row" data-command="/model"><code>/model</code><span>查看或切换模型</span></button>
+        <button class="command-row" data-command="/cost"><code>/cost</code><span>查看 Token 用量</span></button>
+        <button class="command-row" data-command="/compact"><code>/compact</code><span>压缩较早的对话</span></button>
+        <button class="command-row" data-command="/permission"><code>/permission</code><span>工具权限模式</span></button>
+        <button class="command-row command-exit" data-command="/exit"><code>/exit</code><span>退出应用</span></button>
+      </div>
+    </aside>
   </header>
   <nav class="workbench-nav">
     <div class="nav-pages">
@@ -35,6 +66,21 @@
       <form id="terminal-form"><span class="terminal-prompt">›</span><input id="terminal-command" autocomplete="off" placeholder="输入命令并按 Enter"><button id="run-command">运行</button><button id="stop-command" type="button" hidden>停止</button></form>
     </section>
   </main>
+  <dialog id="agent-config-dialog" class="app-dialog">
+    <form id="agent-config-form" method="dialog">
+      <div class="dialog-heading"><div><span class="dialog-kicker">MURASAME / MODEL</span><h2>模型接口设置</h2></div><button type="button" class="icon-button" data-close-dialog aria-label="关闭">×</button></div>
+      <label>接口类型<select id="config-provider"><option value="claude">Anthropic / Claude</option><option value="openai">OpenAI 兼容接口</option></select></label>
+      <label>Base URL<input id="config-base-url" type="url" required></label>
+      <label>模型名称<input id="config-model" required maxlength="200"></label>
+      <label>API Key<input id="config-api-key" type="password" autocomplete="new-password" placeholder="留空则保留已保存的 Key"></label>
+      <p class="dialog-note">配置会与终端版 murasame 共用。</p>
+      <div class="dialog-actions"><button type="button" data-close-dialog>取消</button><button type="submit" class="primary-button">保存设置</button></div>
+    </form>
+  </dialog>
+  <dialog id="choice-dialog" class="app-dialog choice-dialog">
+    <div class="dialog-heading"><div><span class="dialog-kicker">MURASAME / SESSION</span><h2 id="choice-title"></h2></div><button type="button" class="icon-button" data-close-dialog aria-label="关闭">×</button></div>
+    <div id="choice-options" class="choice-options"></div>
+  </dialog>
   <script src="desktop.js"></script>
 </body>
 </html>

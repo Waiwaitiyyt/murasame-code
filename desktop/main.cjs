@@ -22,6 +22,7 @@ let tray = null;
 const codeRoot = path.resolve(__dirname, '..');
 const config = new Store({ name: 'murasame-desktop' });
 const sessions = new Store({ name: 'murasame-sessions' });
+const builtInBackgrounds = new Set(['pic01.jpg', 'pic02.jpg', 'pic03.jpg', 'pic06.jpg']);
 let agentModules = null;
 let agentRunning = false;
 let currentAgentController = null;
@@ -285,6 +286,112 @@ ipcMain.handle('choose-workspace', async () => {
   return result.filePaths[0];
 });
 ipcMain.handle('get-workspace', () => config.get('workspace', os.homedir()));
+ipcMain.handle('get-desktop-preferences', () => ({
+  theme: config.get('theme', 'light'),
+  detailLevel: config.get('detailLevel', 'all'),
+  background: config.get('background', null),
+}));
+ipcMain.handle('set-desktop-preference', (_event, key, value) => {
+  if (key === 'theme' && ['light', 'dark'].includes(value)) config.set(key, value);
+  if (key === 'detailLevel' && ['off', 'command', 'threeLines', 'all'].includes(value)) config.set(key, value);
+  return true;
+});
+ipcMain.handle('set-background', (_event, name) => {
+  if (name === null) {
+    config.delete('background');
+    return null;
+  }
+  if (!builtInBackgrounds.has(name)) throw new Error('不支持这张内置背景图。');
+  const file = path.join(__dirname, 'assets', 'backgrounds', name);
+  config.set('background', { kind: 'builtin', name });
+  return pathToFileURL(file).href;
+});
+ipcMain.handle('upload-background', async () => {
+  const result = await dialog.showOpenDialog(appWindow, {
+    properties: ['openFile'],
+    filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp'] }],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const source = result.filePaths[0];
+  const stat = await fs.promises.stat(source);
+  if (stat.size > 20 * 1024 * 1024) throw new Error('背景图片不能超过 20 MB。');
+  const directory = path.join(app.getPath('userData'), 'backgrounds');
+  await fs.promises.mkdir(directory, { recursive: true });
+  const extension = path.extname(source).toLowerCase();
+  const target = path.join(directory, `background-${Date.now()}${extension}`);
+  await fs.promises.copyFile(source, target);
+  config.set('background', { kind: 'uploaded', path: target });
+  return pathToFileURL(target).href;
+});
+ipcMain.handle('get-background-url', () => {
+  const background = config.get('background', null);
+  if (!background) return null;
+  if (background.kind === 'builtin' && builtInBackgrounds.has(background.name)) {
+    return pathToFileURL(path.join(__dirname, 'assets', 'backgrounds', background.name)).href;
+  }
+  if (background.kind === 'uploaded' && typeof background.path === 'string' && fs.existsSync(background.path)) {
+    return pathToFileURL(background.path).href;
+  }
+  config.delete('background');
+  return null;
+});
+ipcMain.handle('get-agent-config', async () => {
+  const modules = await getAgentModules();
+  const current = modules.resolveConfig();
+  return {
+    provider: current.provider, model: current.model, baseUrl: current.baseUrl,
+    apiKeyConfigured: Boolean(current.apiKey), language: current.language,
+    permissionMode: current.permissionMode,
+  };
+});
+ipcMain.handle('save-agent-config', async (_event, patch) => {
+  const modules = await getAgentModules();
+  if (!['claude', 'openai'].includes(patch.provider)) throw new Error('接口类型无效。');
+  if (typeof patch.model !== 'string' || !patch.model.trim() || patch.model.length > 200) throw new Error('模型名称无效。');
+  let endpoint;
+  try { endpoint = new URL(patch.baseUrl); } catch { throw new Error('Base URL 格式无效。'); }
+  if (!['http:', 'https:'].includes(endpoint.protocol)) throw new Error('Base URL 仅支持 HTTP 或 HTTPS。');
+  const next = { provider: patch.provider, model: patch.model.trim(), baseUrl: endpoint.toString().replace(/\/$/, '') };
+  if (typeof patch.apiKey === 'string' && patch.apiKey.trim()) next.apiKey = patch.apiKey.trim();
+  if (['zh', 'en', 'ja'].includes(patch.language)) next.language = patch.language;
+  modules.writeConfigFile(next);
+  modules.setLanguage(next.language || modules.resolveConfig().language);
+  const updated = modules.resolveConfig();
+  return {
+    provider: updated.provider, model: updated.model, baseUrl: updated.baseUrl,
+    apiKeyConfigured: Boolean(updated.apiKey),
+  };
+});
+ipcMain.handle('set-permission-mode', async (_event, mode) => {
+  const modules = await getAgentModules();
+  if (!modules.isPermissionMode(mode)) throw new Error('权限模式无效。');
+  modules.writeConfigFile({ permissionMode: mode });
+  return mode;
+});
+ipcMain.handle('set-agent-language', async (_event, language) => {
+  const modules = await getAgentModules();
+  if (!['zh', 'en', 'ja'].includes(language)) throw new Error('语言选项无效。');
+  modules.writeConfigFile({ language });
+  modules.setLanguage(language);
+  store.set('language', language);
+  refreshTray();
+  return language;
+});
+ipcMain.handle('reset-permissions', async () => {
+  const modules = await getAgentModules();
+  modules.writeConfigFile({ approvedActions: [] });
+  return true;
+});
+ipcMain.handle('get-usage', () => {
+  const cwd = config.get('workspace', os.homedir());
+  return sessions.get(`usage:${sessionKey(cwd)}`, { input: 0, output: 0 });
+});
+ipcMain.handle('clear-session', (_event) => {
+  const cwd = config.get('workspace', os.homedir());
+  sessions.delete(sessionKey(cwd));
+  sessions.delete(`usage:${sessionKey(cwd)}`);
+  return true;
+});
 ipcMain.handle('list-workspace-files', (_event, directory) => listWorkspaceFiles(directory));
 ipcMain.handle('read-workspace-file', async (_event, relativePath) => {
   const { target } = await verifyWorkspacePath(relativePath);
@@ -319,6 +426,7 @@ ipcMain.handle('new-session', async () => {
   const cwd = config.get('workspace', os.homedir());
   const { newConversation } = await getAgentModules();
   sessions.set(sessionKey(cwd), newConversation(cwd));
+  sessions.delete(`usage:${sessionKey(cwd)}`);
   return true;
 });
 ipcMain.handle('run-murasame', async (_event, prompt) => {
@@ -348,6 +456,13 @@ ipcMain.handle('run-murasame', async (_event, prompt) => {
       {
         onTextDelta: (delta) => appWindow?.webContents.send('agent-event', { type: 'text', delta }),
         onActionTitle: (title) => appWindow?.webContents.send('agent-event', { type: 'action', title }),
+        onUsage: (input, output) => {
+          const usageKey = `usage:${key}`;
+          const usage = sessions.get(usageKey, { input: 0, output: 0 });
+          usage.input += input;
+          usage.output += output;
+          sessions.set(usageKey, usage);
+        },
         onToolResult: (call, ok, result) => {
           appWindow?.webContents.send('agent-event', { type: 'tool', name: call.name, target: modules.toolTarget(call, cwd), ok, result });
           sessions.set(key, conversation);
@@ -379,6 +494,28 @@ ipcMain.handle('run-murasame', async (_event, prompt) => {
     appWindow?.webContents.send('agent-event', { type: 'done' });
   }
 });
+ipcMain.handle('compact-session', async () => {
+  if (agentRunning) return { error: '请等当前任务完成后再压缩会话。' };
+  const cwd = config.get('workspace', os.homedir());
+  const key = sessionKey(cwd);
+  const modules = await getAgentModules();
+  const cfg = modules.resolveConfig();
+  modules.setLanguage(cfg.language);
+  const conversation = sessions.get(key, null) || modules.newConversation(cwd);
+  if (conversation.length <= 1) return { error: '当前没有可压缩的较早对话。' };
+  try {
+    const result = await modules.compactConversation(modules.createClient(cfg), conversation, new AbortController().signal);
+    sessions.set(key, conversation);
+    if (result.usage) {
+      const usageKey = `usage:${key}`;
+      const usage = sessions.get(usageKey, { input: 0, output: 0 });
+      usage.input += result.usage.inputTokens;
+      usage.output += result.usage.outputTokens;
+      sessions.set(usageKey, usage);
+    }
+    return { ok: true };
+  } catch (error) { return { error: error.message || String(error) }; }
+});
 ipcMain.handle('run-terminal', async (_event, command) => {
   if (!command || !command.trim()) return { error: '请输入终端命令。' };
   if (terminalProcess) return { error: '上一条终端命令仍在运行。' };
@@ -403,6 +540,7 @@ ipcMain.on('minimize-to-pet', () => { appWindow?.hide(); if (mainWindow) mainWin
 ipcMain.on('minimize-to-tray', () => { appWindow?.hide(); mainWindow?.hide(); });
 ipcMain.on('show-app', () => createAppWindow());
 ipcMain.on('stop-agent', () => currentAgentController?.abort());
+ipcMain.on('exit-application', () => app.quit());
 
 // ---- 应用生命周期 ----
 
