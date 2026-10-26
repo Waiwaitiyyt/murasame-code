@@ -90,6 +90,14 @@ function parseArgs(argv: string[]): CliOptions {
   return opts;
 }
 
+/** 在解析参数前先摘出 --lang，以便未知参数提示使用正确的语言。 */
+function extractLangArg(argv: string[]): string | undefined {
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--lang' && argv[i + 1]) return argv[i + 1];
+  }
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // 彩色输出（one-shot / 命令行提示用）
 // ---------------------------------------------------------------------------
@@ -288,11 +296,14 @@ async function readStdin(): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const opts = parseArgs(process.argv.slice(2));
+  const rawArgv = process.argv.slice(2);
 
   // 先确定语言（参数 > 环境变量 > 配置），后续所有文案/系统提示词/工具描述都按此语言。
-  const lang = resolveLanguage(opts.lang);
+  // 必须在 parseArgs 之前设置，否则未知参数提示会错误地使用默认语言。
+  const lang = resolveLanguage(extractLangArg(rawArgv));
   setLanguage(lang);
+
+  const opts = parseArgs(rawArgv);
 
   if (opts.help) {
     console.log(t('help', { configPath: configFilePath() }));

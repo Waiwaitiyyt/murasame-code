@@ -100,6 +100,7 @@ export async function executeTool(
   name: string,
   input: Record<string, unknown>,
   cwd: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   switch (name) {
     case 'read_file':
@@ -109,7 +110,7 @@ export async function executeTool(
     case 'edit':
       return editFile(input);
     case 'bash':
-      return runBash(input, cwd);
+      return runBash(input, cwd, signal);
     case 'grep_search':
       return grepSearch(input, cwd);
     case 'glob':
@@ -131,16 +132,27 @@ function toAbs(p: string, cwd: string): string {
   return isAbsolute(p) ? p : resolve(cwd, p);
 }
 
+const MAX_FILE_BYTES = 5 * 1024 * 1024; // 超过 5MB 直接拒绝，避免撑爆上下文
+const MAX_READ_LINES = 2000; // 未指定 limit 时默认最多读的行数
+const MAX_LINE_LENGTH = 2000; // 单行超长时截断，避免压缩后的 bundle 撑爆上下文
+
 function readFile(input: Record<string, unknown>): string {
   const p = toAbs(asString(input.file_path), process.cwd());
   if (!existsSync(p)) return t('tools.fileNotFound', { path: p });
-  if (statSync(p).isDirectory()) return t('tools.isDirectory', { path: p });
+  const st = statSync(p);
+  if (st.isDirectory()) return t('tools.isDirectory', { path: p });
+  if (st.size > MAX_FILE_BYTES) return t('tools.fileTooLarge', { path: p });
   const content = readFileSync(p, 'utf8');
   const lines = content.split('\n');
   const offset = asNumber(input.offset) ?? 0;
-  const limit = asNumber(input.limit) ?? lines.length;
+  const limit = asNumber(input.limit) ?? MAX_READ_LINES;
   const slice = lines.slice(offset, offset + limit);
-  const numbered = slice.map((l, i) => `${String(offset + i + 1).padStart(5, ' ')} │ ${l}`).join('\n');
+  const numbered = slice
+    .map((l, i) => {
+      const line = l.length > MAX_LINE_LENGTH ? l.slice(0, MAX_LINE_LENGTH) + '…' : l;
+      return `${String(offset + i + 1).padStart(5, ' ')} │ ${line}`;
+    })
+    .join('\n');
   const total = lines.length;
   const header = t('tools.readHeader', {
     path: p,
@@ -177,12 +189,12 @@ function editFile(input: Record<string, unknown>): string {
     return t('tools.oldStringMultiple', { count, snippet });
   }
 
-  const next = replaceAll ? content.split(oldStr).join(newStr) : content.replace(oldStr, newStr);
+  const next = replaceAll ? content.split(oldStr).join(newStr) : content.replace(oldStr, () => newStr);
   writeFileSync(p, next, 'utf8');
   return t('tools.replaced', { count: replaceAll ? count : 1, path: p });
 }
 
-async function runBash(input: Record<string, unknown>, cwd: string): Promise<string> {
+async function runBash(input: Record<string, unknown>, cwd: string, signal?: AbortSignal): Promise<string> {
   const command = asString(input.command);
   if (!command) return t('tools.commandEmpty');
   try {
@@ -191,8 +203,11 @@ async function runBash(input: Record<string, unknown>, cwd: string): Promise<str
       timeout: 120_000,
       maxBuffer: 8 * 1024 * 1024,
       shell: '/bin/bash',
+      signal,
     });
-    return `[cwd: ${cwd}]\n${stdout}${stderr ? `\n[stderr]\n${stderr}` : ''}` || t('tools.noOutput');
+    const out = `${stdout}${stderr ? `\n[stderr]\n${stderr}` : ''}`;
+    if (!out.trim()) return t('tools.noOutput');
+    return `[cwd: ${cwd}]\n${out}`;
   } catch (err) {
     const e = err as { stdout?: string; stderr?: string; code?: number; message?: string; killed?: boolean };
     const out = [e.stdout, e.stderr ? `\n[stderr]\n${e.stderr}` : ''].filter(Boolean).join('\n');
@@ -210,12 +225,18 @@ async function grepSearch(input: Record<string, unknown>, cwd: string): Promise<
   if (existsSync(base) && !statSync(base).isDirectory()) {
     files = [base];
   } else {
-    files = await fg(glob, { cwd: base, dot: false, onlyFiles: true, followSymbolicLinks: false });
+    files = await fg(glob, {
+      cwd: base,
+      dot: false,
+      onlyFiles: true,
+      followSymbolicLinks: false,
+      ignore: ['**/node_modules/**', '**/.git/**'],
+    });
   }
 
   let regex: RegExp;
   try {
-    regex = new RegExp(pattern, 'g');
+    regex = new RegExp(pattern);
   } catch (e) {
     return t('tools.invalidRegex', { pattern, error: (e as Error).message });
   }
@@ -242,7 +263,6 @@ async function grepSearch(input: Record<string, unknown>, cwd: string): Promise<
           }
         }
       }
-      regex.lastIndex = 0;
     } catch {
       // 忽略不可读文件
     }
@@ -254,7 +274,12 @@ async function globFiles(input: Record<string, unknown>, cwd: string): Promise<s
   const pattern = asString(input.pattern);
   if (!pattern) return t('tools.patternEmpty');
   const base = toAbs(asString(input.path) || cwd, cwd);
-  const files = await fg(pattern, { cwd: base, dot: false, onlyFiles: false });
+  const files = await fg(pattern, {
+    cwd: base,
+    dot: false,
+    onlyFiles: false,
+    ignore: ['**/node_modules/**', '**/.git/**'],
+  });
   if (!files.length) return t('tools.noMatches', { pattern });
   return files.map((f) => relative(cwd, isAbsolute(f) ? f : join(base, f))).slice(0, 500).join('\n');
 }

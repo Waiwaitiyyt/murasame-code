@@ -11,11 +11,14 @@ export interface AgentHooks {
   onActionTitle?: (text: string) => void;
   /** 最终回答（本次不再调用工具） */
   onText?: (text: string) => void;
+  /** 最终回答的流式增量（逐段输出，用于实时渲染） */
+  onTextDelta?: (delta: string) => void;
   /** 工具执行完成，result 为完整结果文本 */
   onToolResult?: (call: ToolCall, ok: boolean, result: string) => void;
 }
 
 const MAX_ITERATIONS = 40;
+const MAX_HISTORY_MESSAGES = 80; // 保留 system + 最近消息，超长时裁剪，防止撞上下文上限
 
 /** 工具名 → 本地化标签（用于 Qwen Code 风格输出） */
 export function toolLabel(name: string): string {
@@ -51,6 +54,28 @@ export function newConversation(cwd: string): Conversation {
 }
 
 /**
+ * 就地裁剪对话历史：保留 system（index 0）与最近消息，防止只增不减撞上下文上限。
+ * 只在「user（纯文本）消息」边界处裁剪，确保 assistant 的 tool_use 与其 tool 结果不被拆散。
+ */
+export function trimConversation(conversation: Conversation, max = MAX_HISTORY_MESSAGES): void {
+  if (conversation.length <= max) return;
+  const system = conversation[0];
+  const rest = conversation.slice(1);
+  const keep = max - 1;
+  if (rest.length <= keep) return;
+
+  let cut = rest.length - keep;
+  for (let i = cut; i < rest.length; i++) {
+    if (rest[i].role === 'user') {
+      cut = i;
+      break;
+    }
+  }
+  conversation.splice(1, cut, ...rest.slice(cut));
+  if (conversation[0] !== system) conversation.unshift(system);
+}
+
+/**
  * 运行一轮 agent 循环：把 user 文本加入对话，反复调用模型 + 执行工具，直到模型不再请求工具。
  * 返回最终文本，并原地更新 conversation。
  */
@@ -62,13 +87,19 @@ export async function runTurn(
   signal: AbortSignal,
   cwd: string,
 ): Promise<string> {
+  trimConversation(conversation);
   conversation.push({ role: 'user', content: userText });
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
     const start = Date.now();
-    const { text, toolCalls } = await client.stream(conversation, getToolDefs(), {}, signal);
+    const { text, toolCalls } = await client.stream(
+      conversation,
+      getToolDefs(),
+      { onTextDelta: hooks.onTextDelta },
+      signal,
+    );
     const seconds = (Date.now() - start) / 1000;
 
     hooks.onThinking?.(seconds);
@@ -89,7 +120,7 @@ export async function runTurn(
       let result: string;
       let ok = true;
       try {
-        result = await executeTool(call.name, call.input, cwd);
+        result = await executeTool(call.name, call.input, cwd, signal);
       } catch (e) {
         ok = false;
         result = t('agent.toolExecError', { error: (e as Error).message });

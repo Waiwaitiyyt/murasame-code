@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from './i18n-types.js';
 
 export type ProviderName = 'claude' | 'openai';
@@ -43,6 +43,8 @@ export function writeConfigFile(cfg: Partial<Config>): void {
   ensureDir();
   const merged = { ...readConfigFile(), ...cfg };
   writeFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2) + '\n', 'utf8');
+  // API Key 明文落盘，收紧权限避免同机其他用户读取
+  chmodSync(CONFIG_FILE, 0o600);
 }
 
 export function configFilePath(): string {
@@ -133,7 +135,7 @@ export const VENDORS: Vendor[] = [
     name: 'DeepSeek',
     provider: 'openai',
     baseUrl: 'https://api.deepseek.com',
-    defaultModel: 'deepseek-flash',
+    defaultModel: 'deepseek-chat',
     keyHint: 'DeepSeek API Key（sk-...）',
   },
   {
