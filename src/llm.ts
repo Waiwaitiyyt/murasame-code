@@ -264,22 +264,26 @@ function toAnthropicMessages(messages: NonSystemMessage[]): Anthropic.MessagePar
   return out;
 }
 
-function toOpenAIMessage(m: ChatMessage): OpenAI.Chat.ChatCompletionMessageParam {
+export function toOpenAIMessage(m: ChatMessage): OpenAI.Chat.ChatCompletionMessageParam {
   switch (m.role) {
     case 'system':
       return { role: 'system', content: m.content };
     case 'user':
       return { role: 'user', content: m.content };
-    case 'assistant':
-      return {
+    case 'assistant': {
+      const message: OpenAI.Chat.ChatCompletionAssistantMessageParam = {
         role: 'assistant',
         content: m.content || null,
-        tool_calls: m.toolCalls.map((tc) => ({
+      };
+      if (m.toolCalls.length > 0) {
+        message.tool_calls = m.toolCalls.map((tc) => ({
           id: tc.id,
           type: 'function' as const,
           function: { name: tc.name, arguments: JSON.stringify(tc.input) },
-        })),
-      };
+        }));
+      }
+      return message;
+    }
     case 'tool':
       return { role: 'tool', tool_call_id: m.toolCallId, content: m.content };
   }
