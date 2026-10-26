@@ -11,8 +11,12 @@ import {
   VENDORS,
   fetchModels,
   type Config,
+  type PermissionMode,
   type Vendor,
+  PERMISSION_MODES,
+  isPermissionMode,
 } from './config.js';
+import { PermissionManager, type PermissionChoice } from './permissions.js';
 import { theme, buildBanner, formatCwd } from './theme.js';
 import { pickLine } from './persona.js';
 import { setLanguage, getLanguage, t, LANGUAGES, isLanguage, type Language } from './i18n.js';
@@ -36,6 +40,7 @@ const COMMANDS = [
   { cmd: '/model', descKey: 'ui.cmdModel' },
   { cmd: '/cost', descKey: 'ui.cmdCost' },
   { cmd: '/compact', descKey: 'ui.cmdCompact' },
+  { cmd: '/permission', descKey: 'ui.cmdPermission' },
   { cmd: '/exit', descKey: 'ui.cmdExit' },
 ];
 
@@ -50,11 +55,14 @@ type PromptMode =
   | { kind: 'chat' }
   | { kind: 'lang' }
   | { kind: 'detail' }
+  | { kind: 'permission' }
   | { kind: 'config'; step: ConfigStep; vendor?: Vendor; apiKey?: string; models?: string[] };
 
 function App({ client, config, cwd, columns }: { client: LLMClient; config: Config; cwd: string; columns: number }) {
   const convRef = useRef<Conversation>(newConversation(cwd));
   const clientRef = useRef<LLMClient>(client);
+  const permissionRef = useRef(new PermissionManager(config.permissionMode, config.approvedActions, writeConfigFile, cwd));
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>(config.permissionMode);
   const [cfg, setCfg] = useState<Config>(config);
   const [mode, setMode] = useState<PromptMode>({ kind: 'chat' });
   const [items, setItems] = useState<Item[]>([{ kind: 'banner' }]);
@@ -67,7 +75,9 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
   const [streamText, setStreamText] = useState('');
   const [usage, setUsage] = useState({ input: 0, output: 0 });
   const [approval, setApproval] = useState<ToolCall | null>(null);
-  const approvalRef = useRef<((approved: boolean) => void) | null>(null);
+  const [approvalIndex, setApprovalIndex] = useState(1);
+  const approvalIndexRef = useRef(1);
+  const approvalRef = useRef<((choice: PermissionChoice) => void) | null>(null);
   const { exit } = useApp();
   const abortRef = useRef<AbortController | null>(null);
   const [greet, setGreet] = useState(() => pickLine('greet'));
@@ -91,6 +101,23 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
   const push = (item: Item) => setItems((prev) => [...prev, item]);
 
   useInput((inputStr, key) => {
+    if (approvalRef.current) {
+      if (key.ctrl && inputStr === 'c') {
+        abortRef.current?.abort();
+        push({ kind: 'status', level: 'info', text: t('ui.aborted') });
+      } else if (key.upArrow || key.downArrow || key.tab) {
+        const delta = key.upArrow ? -1 : 1;
+        approvalIndexRef.current = (approvalIndexRef.current + delta + 3) % 3;
+        setApprovalIndex(approvalIndexRef.current);
+      } else if (key.return) {
+        approvalRef.current((['yes', 'no', 'always'] as const)[approvalIndexRef.current]);
+      } else if (key.escape) {
+        approvalRef.current('no');
+      } else if (/^[123]$/.test(inputStr)) {
+        approvalRef.current((['yes', 'no', 'always'] as const)[Number(inputStr) - 1]);
+      }
+      return;
+    }
     if (!busy && mode.kind === 'chat' && (key.upArrow || key.downArrow)) {
       const history = inputHistory.current;
       if (key.upArrow && history.length > 0) {
@@ -129,6 +156,27 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
     convRef.current = newConversation(cwd);
     push({ kind: 'status', level: 'info', text: t('ui.langSwitched', { lang: t(`langNames.${lang}`) }) });
     setMode({ kind: 'chat' });
+  }
+
+  function applyPermissionMode(next: PermissionMode) {
+    try {
+      permissionRef.current.setMode(next);
+      setPermissionMode(next);
+      setMode({ kind: 'chat' });
+      push({ kind: 'status', level: 'info', text: t('ui.permissionSwitched', { mode: next.replace('-', ' ') }) });
+    } catch (error) {
+      push({ kind: 'status', level: 'err', text: t('run.errorPrefix', { error: describeError(error) }) });
+    }
+  }
+
+  function startPermissionMode() {
+    setMode({ kind: 'permission' });
+    push({ kind: 'status', level: 'info', text: t('ui.permissionCurrent', { mode: permissionMode.replace('-', ' ') }) });
+    push({ kind: 'status', level: 'info', text: t('ui.permissionRemembered', { count: permissionRef.current.rememberedCount() }) });
+    PERMISSION_MODES.forEach((value, index) => {
+      push({ kind: 'status', level: 'info', text: `  ${index + 1}. ${value.replace('-', ' ')} — ${t(`ui.permissionModes.${value.replace('-', '')}`)}` });
+    });
+    push({ kind: 'status', level: 'info', text: t('ui.permissionResetHint') });
   }
 
   function startLangMode() {
@@ -187,6 +235,18 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
   }
 
   async function handleModeInput(q: string) {
+    if (mode.kind === 'permission') {
+      if (!q) {
+        setMode({ kind: 'chat' });
+        return;
+      }
+      const normalized = q.toLowerCase().replace(/\s+/g, '-');
+      const chosen = PERMISSION_MODES[Number(q) - 1]
+        ?? (isPermissionMode(normalized) ? normalized : null);
+      if (chosen) applyPermissionMode(chosen);
+      else push({ kind: 'status', level: 'err', text: t('config.invalidIndex') });
+      return;
+    }
     if (mode.kind === 'lang') {
       if (!q) {
         setMode({ kind: 'chat' });
@@ -306,7 +366,7 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
     const q = text.trim();
     setInput('');
     if (approvalRef.current) {
-      approvalRef.current(q.toLowerCase() === 'yes');
+      approvalRef.current(q === '3' ? 'always' : q === '1' || q.toLowerCase() === 'yes' ? 'yes' : 'no');
       return;
     }
     historyIndex.current = null;
@@ -361,14 +421,16 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
             }),
           onUsage: (inputTokens, outputTokens) =>
             setUsage((prev) => ({ input: prev.input + inputTokens, output: prev.output + outputTokens })),
-          confirmTool: (call) => new Promise<boolean>((resolve) => {
-            const finish = (approved: boolean) => {
+          confirmTool: (call) => new Promise<PermissionChoice>((resolve) => {
+            const finish = (choice: PermissionChoice) => {
               controller.signal.removeEventListener('abort', onAbort);
               approvalRef.current = null;
               setApproval(null);
-              resolve(approved);
+              resolve(choice);
             };
-            const onAbort = () => finish(false);
+            const onAbort = () => finish('no');
+            approvalIndexRef.current = 1;
+            setApprovalIndex(1);
             approvalRef.current = finish;
             setApproval(call);
             controller.signal.addEventListener('abort', onAbort, { once: true });
@@ -377,6 +439,7 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
         },
         controller.signal,
         cwd,
+        permissionRef.current,
       );
     } catch (e) {
       if (!controller.signal.aborted) {
@@ -443,6 +506,22 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
       case '/compact':
         void compactHistory();
         break;
+      case '/permission':
+        if (arg === 'reset') {
+          try {
+            permissionRef.current.clearRemembered();
+            push({ kind: 'status', level: 'info', text: t('ui.permissionCleared') });
+          } catch (error) {
+            push({ kind: 'status', level: 'err', text: t('run.errorPrefix', { error: describeError(error) }) });
+          }
+        } else if (arg) {
+          const normalized = arg.toLowerCase().replace(/\s+/g, '-');
+          if (isPermissionMode(normalized)) applyPermissionMode(normalized);
+          else push({ kind: 'status', level: 'err', text: t('ui.permissionInvalid') });
+        } else {
+          startPermissionMode();
+        }
+        break;
       default:
         push({ kind: 'status', level: 'err', text: t('ui.unknownCommand', { name }) });
     }
@@ -483,6 +562,8 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
       ? t('ui.langPrompt')
       : mode.kind === 'detail'
         ? t('detail.prompt')
+        : mode.kind === 'permission'
+          ? t('ui.permissionSelect')
         : mode.kind === 'config'
           ? t('ui.cancelHint')
           : null;
@@ -612,11 +693,24 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
           approval ? (
             <Box flexDirection="column">
               <Text color={theme.warn}>{t('ui.approvalPrompt')}</Text>
-              <Text color={theme.white}>{String(approval.input.command ?? '')}</Text>
-              <Box>
-                <Text color={theme.mint}>yes ❯ </Text>
-                <TextInput value={input} onChange={setInput} onSubmit={onSubmit} />
-              </Box>
+              <Text color={theme.white}>
+                {approval.name === 'bash'
+                  ? String(approval.input.command ?? '')
+                  : `${toolLabel(approval.name)} ${toolTarget(approval, cwd)}`}
+              </Text>
+              {(['yes', 'no', 'always'] as const).map((choice, index) => (
+                <Text key={choice} color={index === approvalIndex ? theme.mint : theme.dim}>
+                  {index === approvalIndex ? '❯' : ' '} {index + 1}. {t(
+                    choice === 'always' && approval.name !== 'bash'
+                      ? 'ui.permissionChoices.alwaysExact'
+                      : `ui.permissionChoices.${choice}`, {
+                    action: (approval.name === 'bash'
+                      ? String(approval.input.command ?? '')
+                      : `${toolLabel(approval.name)} ${toolTarget(approval, cwd)}`).slice(0, 50),
+                  })}
+                </Text>
+              ))}
+              <Text color={theme.dim2}>{t('ui.permissionKeys')}</Text>
             </Box>
           ) : (
             <Text color={theme.dim}>{t('ui.busy')}</Text>

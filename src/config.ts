@@ -4,6 +4,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'n
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from './i18n-types.js';
 
 export type ProviderName = 'claude' | 'openai';
+export type PermissionMode = 'auto' | 'manual' | 'full-access';
+export const PERMISSION_MODES: PermissionMode[] = ['auto', 'manual', 'full-access'];
+
+export function isPermissionMode(value: unknown): value is PermissionMode {
+  return typeof value === 'string' && PERMISSION_MODES.includes(value as PermissionMode);
+}
 
 export interface Config {
   provider: ProviderName;
@@ -11,6 +17,8 @@ export interface Config {
   model: string;
   baseUrl: string;
   language: Language;
+  permissionMode: PermissionMode;
+  approvedActions: string[];
 }
 
 export const DEFAULT_MODELS: Record<ProviderName, string> = {
@@ -102,8 +110,15 @@ export function resolveConfig(overrides: Partial<Config> = {}): Config {
     DEFAULT_BASE_URLS[provider];
 
   const language = resolveLanguage(overrides.language);
+  const permissionMode = isPermissionMode(overrides.permissionMode)
+    ? overrides.permissionMode
+    : isPermissionMode(file.permissionMode) ? file.permissionMode : 'auto';
+  const storedActions = overrides.approvedActions ?? file.approvedActions;
+  const approvedActions = Array.isArray(storedActions)
+    ? storedActions.filter((hash): hash is string => typeof hash === 'string' && /^[a-f0-9]{64}$/.test(hash))
+    : [];
 
-  return { provider, apiKey, model, baseUrl, language };
+  return { provider, apiKey, model, baseUrl, language, permissionMode, approvedActions };
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { relative, isAbsolute } from 'node:path';
 import type { ChatMessage, LLMClient, ToolCall } from './llm.js';
-import { getToolDefs, executeTool, requiresCommandApproval } from './tools.js';
+import { getToolDefs, executeTool } from './tools.js';
+import { PermissionManager, type PermissionChoice } from './permissions.js';
 import { buildSystemPrompt } from './prompt.js';
 import { t } from './i18n.js';
 
@@ -16,7 +17,7 @@ export interface AgentHooks {
   /** 工具执行完成，result 为完整结果文本 */
   onToolResult?: (call: ToolCall, ok: boolean, result: string) => void;
   onUsage?: (inputTokens: number, outputTokens: number) => void;
-  confirmTool?: (call: ToolCall) => Promise<boolean>;
+  confirmTool?: (call: ToolCall) => Promise<PermissionChoice>;
 }
 
 const MAX_ITERATIONS = 40;
@@ -127,6 +128,7 @@ export async function runTurn(
   hooks: AgentHooks,
   signal: AbortSignal,
   cwd: string,
+  permissions: PermissionManager = new PermissionManager(),
 ): Promise<string> {
   trimConversation(conversation);
   conversation.push({ role: 'user', content: userText });
@@ -163,8 +165,9 @@ export async function runTurn(
         let result: string;
         let ok = true;
         try {
-          if (call.name === 'bash' && requiresCommandApproval(String(call.input.command ?? ''))) {
-            const approved = await hooks.confirmTool?.(call) ?? false;
+          if (permissions.needsApproval(call)) {
+            const choice = await hooks.confirmTool?.(call) ?? 'no';
+            const approved = permissions.accept(call, choice);
             if (!approved) {
               ok = false;
               result = t('agent.commandApprovalRequired');

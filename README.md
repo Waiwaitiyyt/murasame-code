@@ -89,11 +89,13 @@ echo "重构 src/auth.ts" | murasame   # 从标准输入读取
 | `/model 名称` | 查看或切换当前模型 |
 | `/cost` | 查看供应商返回的 token 用量；准确费用以供应商账单为准 |
 | `/compact` | 调用当前模型将对话压缩为摘要 |
+| `/permission` | 选择 auto、manual 或 full access 权限模式 |
+| `/permission reset` | 清除“以后不再询问”的操作记录 |
 | `↑` / `↓` | 浏览输入历史 |
 | `/exit` `/quit` | 退出 |
 | `Ctrl+C` | 中止当前任务（空闲时退出） |
 
-常见的删除、强制重置等高风险 shell 命令会在交互模式中要求输入 `yes` 确认；print 模式无法交互确认时会跳过执行。
+权限模式会保存到 `~/.murasame/config.json`。auto 自动执行一般工具调用，但删除、强制重置等危险命令需确认；manual 每次调用工具都需确认；full access 不询问。确认菜单提供“是 / 否 / 是且以后不再询问此操作”，第三项只适用于同一工作目录下完全相同的工具及输入。记忆项以哈希保存，不记录命令原文。print 模式无法交互确认时会跳过需要确认的操作。
 
 ## 支持的接口
 
@@ -123,6 +125,7 @@ murasame-code/
 │   ├── prompt.ts         # 系统提示词组装
 │   ├── persona.ts        # 丛雨人设入口
 │   ├── agent.ts          # Agent 循环（模型 ↔ 工具）
+│   ├── permissions.ts    # 工具权限模式与记忆
 │   ├── errors.ts         # API 错误提示
 │   ├── i18n.ts           # i18n 运行时
 │   ├── i18n-types.ts     # i18n 类型与常量

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { compactConversation, runTurn, trimConversation, type Conversation } from '../src/agent.js';
 import type { LLMClient } from '../src/llm.js';
+import { PermissionManager } from '../src/permissions.js';
 
 test('trimming history keeps complete turns without duplicating messages', () => {
   const conversation: Conversation = [{ role: 'system', content: 'system' }];
@@ -128,4 +129,45 @@ test('aborting between tool calls leaves valid tool results for the next turn', 
   }, controller.signal, process.cwd()), { name: 'AbortError' });
   assert.deepEqual(conversation.slice(-2).map((message) =>
     message.role === 'tool' ? message.toolCallId : ''), ['first', 'second']);
+});
+
+test('manual mode asks once after always approving an identical tool call', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'murasame-manual-'));
+  writeFileSync(join(cwd, 'note.txt'), 'remember this');
+  let streams = 0;
+  let confirmations = 0;
+  const client: LLMClient = {
+    provider: 'openai',
+    async stream() {
+      streams++;
+      return streams === 1
+        ? {
+            text: '',
+            toolCalls: [
+              { id: 'first', name: 'read_file', input: { file_path: 'note.txt' } },
+              { id: 'second', name: 'read_file', input: { file_path: 'note.txt' } },
+            ],
+          }
+        : { text: 'done', toolCalls: [] };
+    },
+  };
+  const permissions = new PermissionManager('manual');
+  const results: string[] = [];
+  try {
+    await runTurn(client, [{ role: 'system', content: 'system' }], 'read twice', {
+      confirmTool: async () => {
+        confirmations++;
+        return 'always';
+      },
+      onToolResult: (_call, ok, result) => {
+        assert.equal(ok, true);
+        results.push(result);
+      },
+    }, new AbortController().signal, cwd, permissions);
+    assert.equal(confirmations, 1);
+    assert.equal(results.length, 2);
+    assert.ok(results.every((result) => result.includes('remember this')));
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
 });

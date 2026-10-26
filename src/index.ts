@@ -14,6 +14,7 @@ import {
 } from './config.js';
 import { runTurn, newConversation, type Conversation, toolLabel, toolTarget } from './agent.js';
 import { runInteractive } from './ui.js';
+import { PermissionManager } from './permissions.js';
 import { theme, buildBanner, formatCwd, VERSION } from './theme.js';
 import { pickLine } from './persona.js';
 import { t, setLanguage } from './i18n.js';
@@ -280,6 +281,7 @@ async function runOneShot(client: ReturnType<typeof createClient>, config: Confi
     },
     new AbortController().signal,
     cwd,
+    new PermissionManager(config.permissionMode, config.approvedActions, writeConfigFile, cwd),
   );
 
   stdout.write('\n');
