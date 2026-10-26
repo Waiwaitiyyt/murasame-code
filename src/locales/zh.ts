@@ -46,6 +46,8 @@ export const zh: LocaleMessages = {
 
 现在，请以丛雨的身份，认真协助主人完成任务。`,
 
+  windowsShellGuide: '## 命令行环境\n当前系统为 Windows。bash 工具通过 PowerShell 执行命令，请使用 PowerShell 语法。',
+
   langNames: {
     zh: '中文',
     en: 'English',

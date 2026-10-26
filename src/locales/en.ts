@@ -46,6 +46,8 @@ Current working directory (cwd): {cwd}
 
 Now, as Murasame, carefully help Master complete the task.`,
 
+  windowsShellGuide: '## Command-line environment\nThis is Windows. The bash tool runs commands through PowerShell; use PowerShell syntax.',
+
   langNames: {
     zh: 'Chinese',
     en: 'English',

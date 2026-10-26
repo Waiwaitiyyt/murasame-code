@@ -39,6 +39,9 @@ export interface LocaleMessages {
   /** 系统提示词里的核心职责/工具规则/输出要求，{cwd} 占位 */
   promptGuide: string;
 
+  /** Windows 上 Agent 命令工具使用的 shell 提示 */
+  windowsShellGuide: string;
+
   /** 语言显示名（当前语言视角） */
   langNames: {
     zh: string;

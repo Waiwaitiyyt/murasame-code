@@ -132,6 +132,8 @@ function toAbs(p: string, cwd: string): string {
 /** shell 无法完整静态解析；对常见破坏性命令保守地要求交互确认。 */
 export function requiresCommandApproval(command: string): boolean {
   return /\b(?:rm|rmdir|unlink|shred|mkfs|sudo)\s+\S/i.test(command)
+    || /\b(?:Remove-Item|Clear-Content|Format-Volume|Stop-Computer)\b/i.test(command)
+    || /\b(?:del|erase|rd|rmdir)\s+(?:\/s|\/q|\/f|-[rRf])/i.test(command)
     || /\bgit\s+(?:reset\s+--hard|clean\s+-\S*?[fd]|push\s+--force)/i.test(command)
     || /\b(?:chmod|chown)\s+-R\b/i.test(command)
     || /\bdd\s+[^\n]*\bof=\/dev\//i.test(command)
@@ -231,7 +233,12 @@ async function runBash(input: Record<string, unknown>, cwd: string, signal?: Abo
   let timedOut = false;
   try {
     const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-      const child = spawn('/bin/bash', ['-c', command], {
+      const windows = process.platform === 'win32';
+      const shell = windows ? (process.env.MURASAME_SHELL || 'powershell.exe') : '/bin/bash';
+      const args = windows
+        ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', `[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); ${command}`]
+        : ['-c', command];
+      const child = spawn(shell, args, {
         cwd,
         detached: process.platform !== 'win32',
         stdio: ['ignore', 'pipe', 'pipe'],

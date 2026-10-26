@@ -46,6 +46,8 @@ export const ja: LocaleMessages = {
 
 それでは、ムラサメとして、ご主人様のタスクを真剣に手助けしてほしい。`,
 
+  windowsShellGuide: '## コマンドライン環境\nWindows 上で実行中です。bash ツールは PowerShell 経由でコマンドを実行するため、PowerShell の構文を使ってください。',
+
   langNames: {
     zh: '中国語',
     en: '英語',
