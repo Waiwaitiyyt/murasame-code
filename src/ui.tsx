@@ -30,16 +30,21 @@ const COMMANDS = [
   { cmd: '/clear', descKey: 'ui.cmdClear' },
   { cmd: '/config', descKey: 'ui.cmdConfig' },
   { cmd: '/lang', descKey: 'ui.cmdLang' },
+  { cmd: '/detail', descKey: 'ui.cmdDetail' },
   { cmd: '/exit', descKey: 'ui.cmdExit' },
 ];
 
-const MAX_TOOL_RESULT_LINES = 20;
+/** 命令输出详细程度：0=不打印 1=仅命令 2=命令+前三行 3=全部 */
+type DetailLevel = 0 | 1 | 2 | 3;
+const DETAIL_LEVELS: DetailLevel[] = [0, 1, 2, 3];
+const DETAIL_LEVEL_KEYS = ['off', 'command', 'threeLines', 'all'] as const;
 
 type ConfigStep = 'vendor' | 'key' | 'model';
 
 type PromptMode =
   | { kind: 'chat' }
   | { kind: 'lang' }
+  | { kind: 'detail' }
   | { kind: 'config'; step: ConfigStep; vendor?: Vendor; apiKey?: string; models?: string[] };
 
 function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: string }) {
@@ -50,6 +55,8 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
   const [items, setItems] = useState<Item[]>([{ kind: 'banner' }]);
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState('');
+  const [detail, setDetail] = useState<DetailLevel>(3);
+  const [streamText, setStreamText] = useState('');
   const { exit } = useApp();
   const { stdout } = useStdout();
   const abortRef = useRef<AbortController | null>(null);
@@ -102,6 +109,35 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
     push({ kind: 'status', level: 'info', text: t('ui.langPrompt') });
   }
 
+  function detailLevelName(level: DetailLevel): string {
+    return t(`detail.levels.${DETAIL_LEVEL_KEYS[level]}`);
+  }
+
+  function applyDetail(level: DetailLevel) {
+    setDetail(level);
+    push({ kind: 'status', level: 'info', text: t('detail.switched', { level: detailLevelName(level) }) });
+    setMode({ kind: 'chat' });
+  }
+
+  function startDetailMode() {
+    setMode({ kind: 'detail' });
+    push({ kind: 'status', level: 'info', text: t('detail.title') });
+    DETAIL_LEVELS.forEach((l, i) =>
+      push({ kind: 'status', level: 'info', text: `  ${i + 1}. ${detailLevelName(l)}` }),
+    );
+    push({ kind: 'status', level: 'info', text: t('detail.prompt') });
+  }
+
+  function parseDetailLevel(q: string): DetailLevel | null {
+    const s = q.trim();
+    if (s === '') return null;
+    const idx = DETAIL_LEVEL_KEYS.indexOf(s as (typeof DETAIL_LEVEL_KEYS)[number]);
+    if (idx !== -1) return DETAIL_LEVELS[idx];
+    const n = Number(s);
+    if (Number.isInteger(n) && n >= 1 && n <= DETAIL_LEVELS.length) return DETAIL_LEVELS[n - 1];
+    return null;
+  }
+
   function startConfigMode() {
     setMode({ kind: 'config', step: 'vendor' });
     push({ kind: 'status', level: 'info', text: t('config.chooseVendor') });
@@ -127,6 +163,17 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
       }
       const lang = parseLang(q);
       if (lang) applyLanguage(lang);
+      else push({ kind: 'status', level: 'err', text: t('config.invalidIndex') });
+      return;
+    }
+
+    if (mode.kind === 'detail') {
+      if (!q) {
+        setMode({ kind: 'chat' });
+        return;
+      }
+      const level = parseDetailLevel(q);
+      if (level != null) applyDetail(level);
       else push({ kind: 'status', level: 'err', text: t('config.invalidIndex') });
       return;
     }
@@ -242,6 +289,7 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
 
   async function executeTurn(q: string) {
     setBusy(true);
+    setStreamText('');
     push({ kind: 'user', text: q });
     push({ kind: 'status', level: 'info', text: pickLine('working') });
 
@@ -256,8 +304,15 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
         {
           onThinking: (seconds) =>
             push({ kind: 'thinking', seconds: Math.max(1, Math.round(seconds)) }),
-          onActionTitle: (text) => push({ kind: 'actionTitle', text }),
-          onText: (text) => push({ kind: 'assistant', text }),
+          onTextDelta: (delta) => setStreamText((prev) => prev + delta),
+          onActionTitle: (text) => {
+            setStreamText('');
+            push({ kind: 'actionTitle', text });
+          },
+          onText: (text) => {
+            setStreamText('');
+            push({ kind: 'assistant', text });
+          },
           onToolResult: (call, ok, result) =>
             push({
               kind: 'tool',
@@ -275,6 +330,7 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
         push({ kind: 'status', level: 'err', text: t('run.errorPrefix', { error: (e as Error).message }) });
       }
     } finally {
+      setStreamText('');
       setBusy(false);
       abortRef.current = null;
       push({ kind: 'status', level: 'info', text: pickLine('done') });
@@ -302,6 +358,13 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
         if (arg && isLanguage(arg)) applyLanguage(arg);
         else startLangMode();
         break;
+      case '/detail': {
+        const level = arg ? parseDetailLevel(arg) : null;
+        if (arg && level != null) applyDetail(level);
+        else if (arg) push({ kind: 'status', level: 'err', text: t('ui.unknownCommand', { name }) });
+        else startDetailMode();
+        break;
+      }
       default:
         push({ kind: 'status', level: 'err', text: t('ui.unknownCommand', { name }) });
     }
@@ -311,9 +374,11 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
   const modeHint =
     mode.kind === 'lang'
       ? t('ui.langPrompt')
-      : mode.kind === 'config'
-        ? t('ui.cancelHint')
-        : null;
+      : mode.kind === 'detail'
+        ? t('detail.prompt')
+        : mode.kind === 'config'
+          ? t('ui.cancelHint')
+          : null;
 
   return (
     <Box flexDirection="column">
@@ -400,8 +465,10 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
               </Text>
             );
           case 'tool': {
+            if (detail === 0) return null; // 完全不打印
             const allLines = item.result.replace(/\s+$/, '').split('\n');
-            const lines = allLines.slice(0, MAX_TOOL_RESULT_LINES);
+            const maxLines = detail === 3 ? allLines.length : detail === 2 ? 3 : 0;
+            const lines = allLines.slice(0, maxLines);
             return (
               <Box key={i} flexDirection="column">
                 <Text color={item.ok ? theme.ok : theme.err}>
@@ -412,7 +479,7 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
                     {'    ' + l}
                   </Text>
                 ))}
-                {allLines.length > MAX_TOOL_RESULT_LINES && (
+                {allLines.length > maxLines && (
                   <Text color={theme.dim2}>    {t('run.truncated')}</Text>
                 )}
               </Box>
@@ -428,6 +495,10 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
           }
         }
       })}
+
+      {streamText && (
+        <Text color={theme.white}>{streamText}</Text>
+      )}
 
       <Box marginTop={1}>
         {busy ? (

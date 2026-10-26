@@ -95,6 +95,7 @@ export interface LocaleMessages {
     cmdExit: string;
     cmdConfig: string;
     cmdLang: string;
+    cmdDetail: string;
     /** 已中止 */
     aborted: string;
     /** 用户前缀「主人 › 」 */
@@ -116,6 +117,27 @@ export interface LocaleMessages {
     cancelled: string;
     /** （回车取消） */
     cancelHint: string;
+  };
+
+  detail: {
+    /** 选择命令输出显示级别： */
+    title: string;
+    /** 输入序号 1-4（回车取消） */
+    prompt: string;
+    /** 命令输出详细程度已切换 → {level} */
+    switched: string;
+    /** 当前：{level} */
+    current: string;
+    levels: {
+      /** 完全不打印 */
+      off: string;
+      /** 只打印命令本身 */
+      command: string;
+      /** 打印命令+前三行 */
+      threeLines: string;
+      /** 全部打印 */
+      all: string;
+    };
   };
 
   tools: {
@@ -154,6 +176,8 @@ export interface LocaleMessages {
     fileNotFound: string;
     /** 错误：{path} 是目录 */
     isDirectory: string;
+    /** 错误：文件过大 {path} */
+    fileTooLarge: string;
     /** [{path}] {total} 行（显示 {start}-{end}） */
     readHeader: string;
     /** 已写入 {bytes} 字节 → {path} */

@@ -88,9 +88,10 @@ export const ja: LocaleMessages = {
     cmdExit: '終了（/quit でも可）',
     cmdConfig: 'API を再設定',
     cmdLang: '言語を切り替え',
+    cmdDetail: 'コマンド出力の詳細度を調整',
     aborted: 'ムラサメは刀を収めた（中止）',
     userPrefix: 'ご主人様 › ',
-    helpCommand: 'コマンド：/help ヘルプ · /clear 消去 · /config 設定 · /lang 言語 · /exit 終了 · Ctrl+C 中止',
+    helpCommand: 'コマンド：/help ヘルプ · /clear 消去 · /config 設定 · /lang 言語 · /detail 詳細度 · /exit 終了 · Ctrl+C 中止',
     unknownCommand: '不明なコマンド {name}（/help を参照）',
     busy: 'ムラサメは作業中……（Ctrl+C で中止）',
     inputPrompt: 'ムラサメ',
@@ -99,6 +100,19 @@ export const ja: LocaleMessages = {
     langSwitched: '言語を切り替えました → {lang}',
     cancelled: 'キャンセルしました',
     cancelHint: '（Enter でキャンセル）',
+  },
+
+  detail: {
+    title: 'コマンド出力の表示レベルを選択：',
+    prompt: '番号 1-4 を入力（Enter でキャンセル）',
+    switched: 'コマンド出力の詳細度を切り替えました → {level}',
+    current: '現在：{level}',
+    levels: {
+      off: '何も表示しない',
+      command: 'コマンドのみ表示',
+      threeLines: 'コマンド＋先頭3行を表示',
+      all: 'すべて表示',
+    },
   },
 
   tools: {
@@ -144,6 +158,7 @@ export const ja: LocaleMessages = {
     unknownTool: 'エラー：不明なツール "{name}"',
     fileNotFound: 'エラー：ファイルが存在しません {path}',
     isDirectory: 'エラー：{path} はディレクトリです',
+    fileTooLarge: 'エラー：ファイルが大きすぎます（5MB 超）→ {path}',
     readHeader: '[{path}] {total} 行（表示 {start}-{end}）',
     wroteBytes: '{bytes} バイトを書き込みました → {path}',
     oldStringEmpty: 'エラー：old_string は空にできません',
