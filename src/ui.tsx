@@ -59,8 +59,18 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
   const [streamText, setStreamText] = useState('');
   const { exit } = useApp();
   const { stdout } = useStdout();
+  const [columns, setColumns] = useState(() => stdout.columns || 80);
   const abortRef = useRef<AbortController | null>(null);
   const [greet, setGreet] = useState(() => pickLine('greet'));
+
+  useEffect(() => {
+    const onResize = () => setColumns(stdout.columns || 80);
+    stdout.on('resize', onResize);
+    onResize();
+    return () => {
+      stdout.off('resize', onResize);
+    };
+  }, [stdout]);
 
   // 台词每 5~10 秒随机换一条（与按键/渲染解耦）
   useEffect(() => {
@@ -391,7 +401,7 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
                 model: cfg.model,
                 cwd: formatCwd(cwd),
               },
-              stdout.columns,
+              columns,
             );
             const boxColors = [
               theme.ink,
@@ -537,7 +547,24 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
   );
 }
 
-export function runInteractive(client: LLMClient, config: Config, cwd: string): Promise<void> {
-  const instance = render(<App client={client} config={config} cwd={cwd} />, { exitOnCtrlC: false });
-  return instance.waitUntilExit();
+export async function runInteractive(client: LLMClient, config: Config, cwd: string): Promise<void> {
+  const useAlternateScreen = process.stdin.isTTY && process.stdout.isTTY;
+  let restored = false;
+  const restore = () => {
+    if (!useAlternateScreen || restored) return;
+    restored = true;
+    process.stdout.write('\u001b[?1049l');
+  };
+
+  if (useAlternateScreen) {
+    process.once('exit', restore);
+    process.stdout.write('\u001b[?1049h\u001b[H');
+  }
+  try {
+    const instance = render(<App client={client} config={config} cwd={cwd} />, { exitOnCtrlC: false });
+    await instance.waitUntilExit();
+  } finally {
+    restore();
+    process.off('exit', restore);
+  }
 }

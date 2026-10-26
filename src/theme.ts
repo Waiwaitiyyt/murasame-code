@@ -3,6 +3,8 @@
  * 配色取自丛雨：浅薄荷绿超长直发、酒红瞳、深紫黑和风装，点缀紫红飘带与樱花粉。
  */
 import { homedir } from 'node:os';
+import sliceAnsi from 'slice-ansi';
+import stringWidth from 'string-width';
 
 export const VERSION = '0.1.0';
 
@@ -44,6 +46,20 @@ const LOGO_WIDTH = Math.max(...RAW_LOGO.map((l) => l.length));
  */
 export const LOGO_LINES: string[] = RAW_LOGO.map((l) => l.padEnd(LOGO_WIDTH));
 
+const COMPACT_GLYPHS: Record<string, string[]> = {
+  M: ['█ █', '███', '███', '█ █', '█ █'],
+  U: ['█ █', '█ █', '█ █', '█ █', '███'],
+  R: ['██ ', '█ █', '██ ', '█ █', '█ █'],
+  A: ['███', '█ █', '███', '█ █', '█ █'],
+  S: ['███', '█  ', '███', '  █', '███'],
+  E: ['███', '█  ', '██ ', '█  ', '███'],
+};
+const COMPACT_LOGO = Array.from({ length: 5 }, (_, row) =>
+  [...'MURASAME'].map((letter) => COMPACT_GLYPHS[letter][row]).join(' '),
+);
+const COMPACT_WIDTH = Math.max(...COMPACT_LOGO.map((line) => line.length));
+const PLAIN_LOGO = ['MURASAME'];
+
 export interface InfoBoxOptions {
   provider: string;
   model: string;
@@ -51,10 +67,18 @@ export interface InfoBoxOptions {
 }
 
 const BOX_WIDTH = 58; // 信息框最大宽度（含左右边框）
-const MIN_BOX_WIDTH = 30; // 信息框最小宽度（含左右边框）
+const MIN_BOX_WIDTH = 8; // 极窄终端也不能超过可用宽度
 
 function clip(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max - 3) + '...' : s;
+  if (stringWidth(s) <= max) return s;
+  const suffix = max > 3 ? '...' : '';
+  const available = max - suffix.length;
+  let end = available;
+  let clipped = sliceAnsi(s, 0, end);
+  while (stringWidth(clipped) > available && end > 0) {
+    clipped = sliceAnsi(s, 0, --end);
+  }
+  return clipped + suffix;
 }
 
 /**
@@ -70,7 +94,10 @@ export function buildInfoBox(opts: InfoBoxOptions, maxWidth: number = BOX_WIDTH)
   const conf = `${providerName} API Key | [${opts.provider}] ${opts.model}`;
   const rows = [title, '', conf, opts.cwd];
 
-  const padRow = (s: string) => ' ' + clip(s, inner - 2).padEnd(inner - 2) + ' ';
+  const padRow = (s: string) => {
+    const clipped = clip(s, inner - 2);
+    return ' ' + clipped + ' '.repeat(inner - 2 - stringWidth(clipped)) + ' ';
+  };
   const border = (l: string, m: string, r: string) => l + m.repeat(inner) + r;
 
   return [
@@ -91,16 +118,24 @@ export interface BannerLayout {
 /**
  * 根据终端宽度自适应 banner 布局：
  * - inline：宽度足够时，大字与信息框并排
- * - stacked：中等宽度时，大字在上、信息框在下
- * - box-only：过窄时只显示信息框（宽度自适应）
+ * - stacked：根据宽度选大字、紧凑字或纯文本，放在信息框上方
+ * - box-only：极窄时只显示信息框
  */
 export function buildBanner(opts: InfoBoxOptions, columns?: number): BannerLayout {
-  const cols = columns && columns > 0 ? columns : 80;
-  const boxMax = Math.max(MIN_BOX_WIDTH, Math.min(BOX_WIDTH, cols - 2));
+  const cols = columns && columns > 0 ? Math.floor(columns) : 80;
+  const available = Math.max(0, cols - 2); // 给终端自动换行留出余量
+  if (available < MIN_BOX_WIDTH) {
+    return { mode: 'box-only', logo: [], box: [clip('MURASAME', available)] };
+  }
+  const boxMax = Math.min(BOX_WIDTH, available);
   const box = buildInfoBox(opts, boxMax);
 
-  if (cols >= LOGO_WIDTH + 2 + box[0].length) return { mode: 'inline', logo: LOGO_LINES, box };
-  if (cols >= LOGO_WIDTH + 2) return { mode: 'stacked', logo: LOGO_LINES, box };
+  if (available >= LOGO_WIDTH + 2 + box[0].length) {
+    return { mode: 'inline', logo: LOGO_LINES, box };
+  }
+  if (available >= LOGO_WIDTH) return { mode: 'stacked', logo: LOGO_LINES, box };
+  if (available >= COMPACT_WIDTH) return { mode: 'stacked', logo: COMPACT_LOGO, box };
+  if (available >= PLAIN_LOGO[0].length) return { mode: 'stacked', logo: PLAIN_LOGO, box };
   return { mode: 'box-only', logo: [], box };
 }
 
