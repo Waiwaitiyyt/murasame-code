@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
-import { render, Box, Text, useApp, useInput, useStdout } from 'ink';
+import { render, Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
+import stringWidth from 'string-width';
 import { createClient, type LLMClient } from './llm.js';
 import { runTurn, newConversation, type Conversation, toolLabel, toolTarget } from './agent.js';
 import {
@@ -47,7 +48,7 @@ type PromptMode =
   | { kind: 'detail' }
   | { kind: 'config'; step: ConfigStep; vendor?: Vendor; apiKey?: string; models?: string[] };
 
-function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: string }) {
+function App({ client, config, cwd, columns }: { client: LLMClient; config: Config; cwd: string; columns: number }) {
   const convRef = useRef<Conversation>(newConversation(cwd));
   const clientRef = useRef<LLMClient>(client);
   const [cfg, setCfg] = useState<Config>(config);
@@ -58,19 +59,8 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
   const [detail, setDetail] = useState<DetailLevel>(3);
   const [streamText, setStreamText] = useState('');
   const { exit } = useApp();
-  const { stdout } = useStdout();
-  const [columns, setColumns] = useState(() => stdout.columns || 80);
   const abortRef = useRef<AbortController | null>(null);
   const [greet, setGreet] = useState(() => pickLine('greet'));
-
-  useEffect(() => {
-    const onResize = () => setColumns(stdout.columns || 80);
-    stdout.on('resize', onResize);
-    onResize();
-    return () => {
-      stdout.off('resize', onResize);
-    };
-  }, [stdout]);
 
   // 台词每 5~10 秒随机换一条（与按键/渲染解耦）
   useEffect(() => {
@@ -548,21 +538,47 @@ function App({ client, config, cwd }: { client: LLMClient; config: Config; cwd: 
 }
 
 export async function runInteractive(client: LLMClient, config: Config, cwd: string): Promise<void> {
-  const useAlternateScreen = process.stdin.isTTY && process.stdout.isTTY;
+  const stdout = process.stdout;
+  const useAlternateScreen = process.stdin.isTTY && stdout.isTTY;
+  const bannerOptions = { provider: config.provider, model: config.model, cwd: formatCwd(cwd) };
+  const bannerWidth = (columns: number) => {
+    const { mode, logo, box } = buildBanner(bannerOptions, columns);
+    const logoWidth = Math.max(0, ...logo.map((line) => stringWidth(line)));
+    const boxWidth = Math.max(0, ...box.map((line) => stringWidth(line)));
+    return mode === 'inline' ? logoWidth + 2 + boxWidth : Math.max(logoWidth, boxWidth);
+  };
+  let columns = stdout.columns || 80;
   let restored = false;
   const restore = () => {
     if (!useAlternateScreen || restored) return;
     restored = true;
-    process.stdout.write('\u001b[?1049l');
+    stdout.write('\u001b[?1049l');
   };
 
   if (useAlternateScreen) {
     process.once('exit', restore);
-    process.stdout.write('\u001b[?1049h\u001b[H');
+    stdout.write('\u001b[?1049h\u001b[H');
   }
   try {
-    const instance = render(<App client={client} config={config} cwd={cwd} />, { exitOnCtrlC: false });
-    await instance.waitUntilExit();
+    const draw = () => <App client={client} config={config} cwd={cwd} columns={columns} />;
+    const instance = render(draw(), { exitOnCtrlC: false });
+    const onResize = () => {
+      const nextColumns = stdout.columns || 80;
+      if (nextColumns === columns) return;
+      // Ink 按旧行数擦除，缩窄后旧行已被终端折行，必须重置备用屏幕。
+      if (useAlternateScreen && nextColumns <= bannerWidth(columns)) {
+        instance.clear();
+        stdout.write('\u001b[2J\u001b[H');
+      }
+      columns = nextColumns;
+      instance.rerender(draw());
+    };
+    stdout.on('resize', onResize);
+    try {
+      await instance.waitUntilExit();
+    } finally {
+      stdout.off('resize', onResize);
+    }
   } finally {
     restore();
     process.off('exit', restore);
