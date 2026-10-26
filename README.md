@@ -1,5 +1,7 @@
 # 丛雨代码 · murasame
 
+本项目采用 [GNU General Public License v3.0](LICENSE) 许可证。
+
 > 终端里的丛雨（千恋＊万花 · ムラサメ）AI 编程代理，用法类似 Claude Code。
 
 一个能力完整的命令行编程 Agent：能真正**读文件、改代码、执行命令、搜索文件**，用丛雨的口吻与配色陪伴你工作。

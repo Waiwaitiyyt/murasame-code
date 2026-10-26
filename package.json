@@ -2,7 +2,7 @@
   "name": "murasame-code",
   "version": "0.1.0",
   "description": "丛雨代码 —— 终端里的丛雨（千恋＊万花）AI 编程代理",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "type": "module",
   "bin": {
     "murasame": "./bin/murasame.js"
