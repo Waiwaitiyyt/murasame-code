@@ -1,7 +1,7 @@
 {
   "name": "murasame-code",
   "version": "0.1.0",
-  "description": "丛雨代码 —— 终端里的丛雨（千恋＊万花）AI 编程代理",
+  "description": "丛雨代码 —— 桌面端 AI 编程代理与千恋＊万花丛雨桌宠",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Waiwaitiyyt/murasame-code.git"
@@ -15,6 +15,7 @@
     "bin",
     "dist",
     "persona",
+    "desktop",
     "README.md",
     "LICENSE"
   ],
@@ -38,7 +39,11 @@
     "test": "node --import tsx --test test/*.test.ts",
     "lint": "eslint src test --ext .ts,.tsx",
     "format": "prettier --write src test",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "desktop": "electron .",
+    "desktop:pet": "electron . --pet-only",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
@@ -48,7 +53,8 @@
     "openai": "^4.70.0",
     "react": "^18.3.1",
     "slice-ansi": "^7.1.2",
-    "string-width": "^7.2.0"
+    "string-width": "^7.2.0",
+    "electron-store": "^8.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
@@ -58,6 +64,60 @@
     "eslint": "^8.57.1",
     "prettier": "^3.6.2",
     "tsx": "^4.16.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "main": "desktop/main.cjs",
+  "build": {
+    "appId": "com.murasame.desktop",
+    "productName": "丛雨代码",
+    "files": [
+      "bin/**/*",
+      "dist/**/*",
+      "persona/**/*",
+      "desktop/**/*",
+      "!desktop/fgimages/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop/fgimages",
+        "to": "fgimages"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "desktop/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "desktop/assets/icon.ico",
+      "uninstallerIcon": "desktop/assets/icon.ico",
+      "installerHeaderIcon": "desktop/assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "丛雨代码",
+      "runAfterFinish": true,
+      "displayLanguageSelector": true,
+      "installerLanguages": [
+        "zh_CN",
+        "en_US",
+        "ja_JP"
+      ],
+      "language": "2052",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "desktop/assets/icon.png"
+    }
+  },
+  "allowScripts": {
+    "electron@28.3.3": true
   }
 }
