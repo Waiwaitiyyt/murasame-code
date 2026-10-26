@@ -1,7 +1,6 @@
-import { useRef, useState, useEffect } from 'react';
-import { render, Box, Text, useApp, useInput } from 'ink';
+import { useRef, useState } from 'react';
+import { render, Box, Static, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
-import stringWidth from 'string-width';
 import { createClient, type LLMClient, type ToolCall } from './llm.js';
 import { runTurn, compactConversation, newConversation, type Conversation, toolLabel, toolTarget } from './agent.js';
 import {
@@ -58,7 +57,14 @@ type PromptMode =
   | { kind: 'permission' }
   | { kind: 'config'; step: ConfigStep; vendor?: Vendor; apiKey?: string; models?: string[] };
 
-function App({ client, config, cwd, columns }: { client: LLMClient; config: Config; cwd: string; columns: number }) {
+function App({ client, config, cwd, columns, screenVersion, clearScreen }: {
+  client: LLMClient;
+  config: Config;
+  cwd: string;
+  columns: number;
+  screenVersion: number;
+  clearScreen: () => void;
+}) {
   const convRef = useRef<Conversation>(newConversation(cwd));
   const clientRef = useRef<LLMClient>(client);
   const permissionRef = useRef(new PermissionManager(config.permissionMode, config.approvedActions, writeConfigFile, cwd));
@@ -81,22 +87,12 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
   const { exit } = useApp();
   const abortRef = useRef<AbortController | null>(null);
   const [greet, setGreet] = useState(() => pickLine('greet'));
+  const [transcriptVersion, setTranscriptVersion] = useState(0);
 
-  // 台词每 5~10 秒随机换一条（与按键/渲染解耦）
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    const schedule = () => {
-      timer = setTimeout(
-        () => {
-          setGreet(pickLine('greet'));
-          schedule();
-        },
-        5000 + Math.random() * 5000,
-      );
-    };
-    schedule();
-    return () => clearTimeout(timer);
-  }, []);
+  const redrawTranscript = () => {
+    clearScreen();
+    setTranscriptVersion((version) => version + 1);
+  };
 
   const push = (item: Item) => setItems((prev) => [...prev, item]);
 
@@ -153,6 +149,7 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
     setLanguage(lang);
     writeConfigFile({ language: lang });
     setGreet(pickLine('greet'));
+    redrawTranscript();
     convRef.current = newConversation(cwd);
     push({ kind: 'status', level: 'info', text: t('ui.langSwitched', { lang: t(`langNames.${lang}`) }) });
     setMode({ kind: 'chat' });
@@ -352,6 +349,7 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
     const newCfg = resolveConfig({ ...chosen, language: getLanguage() });
     setCfg(newCfg);
     clientRef.current = createClient(newCfg);
+    redrawTranscript();
 
     push({ kind: 'status', level: 'info', text: t('config.saved', { path: configFilePath() }) });
     push({
@@ -462,6 +460,7 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
         break;
       case '/clear':
         setItems([{ kind: 'banner' }]);
+        redrawTranscript();
         convRef.current = newConversation(cwd);
         setUsage({ input: 0, output: 0 });
         break;
@@ -491,6 +490,7 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
         writeConfigFile({ model: arg });
         setCfg(next);
         clientRef.current = createClient(next);
+        redrawTranscript();
         push({ kind: 'status', level: 'info', text: t('ui.modelSwitched', { model: arg }) });
         break;
       }
@@ -556,7 +556,6 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
     }
   }
 
-  const visible = items.slice(-120);
   const modeHint =
     mode.kind === 'lang'
       ? t('ui.langPrompt')
@@ -570,7 +569,8 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
 
   return (
     <Box flexDirection="column">
-      {visible.map((item, i) => {
+      <Static key={`${screenVersion}:${transcriptVersion}`} items={items}>
+        {(item, i) => {
         switch (item.kind) {
           case 'banner': {
             const { mode, logo, box } = buildBanner(
@@ -682,7 +682,8 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
             );
           }
         }
-      })}
+        }}
+      </Static>
 
       {streamText && (
         <Text color={theme.white}>{streamText}</Text>
@@ -755,14 +756,8 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
 export async function runInteractive(client: LLMClient, config: Config, cwd: string): Promise<void> {
   const stdout = process.stdout;
   const useAlternateScreen = process.stdin.isTTY && stdout.isTTY;
-  const bannerOptions = { provider: config.provider, model: config.model, cwd: formatCwd(cwd) };
-  const bannerWidth = (columns: number) => {
-    const { mode, logo, box } = buildBanner(bannerOptions, columns);
-    const logoWidth = Math.max(0, ...logo.map((line) => stringWidth(line)));
-    const boxWidth = Math.max(0, ...box.map((line) => stringWidth(line)));
-    return mode === 'inline' ? logoWidth + 2 + boxWidth : Math.max(logoWidth, boxWidth);
-  };
   let columns = stdout.columns || 80;
+  let screenVersion = 0;
   let restored = false;
   const restore = () => {
     if (!useAlternateScreen || restored) return;
@@ -775,17 +770,20 @@ export async function runInteractive(client: LLMClient, config: Config, cwd: str
     stdout.write('\u001b[?1049h\u001b[H');
   }
   try {
-    const draw = () => <App client={client} config={config} cwd={cwd} columns={columns} />;
+    const clearScreen = () => {
+      instance.clear();
+      if (useAlternateScreen) stdout.write('\u001b[2J\u001b[H');
+    };
+    const draw = () => <App client={client} config={config} cwd={cwd} columns={columns}
+      screenVersion={screenVersion} clearScreen={clearScreen} />;
     const instance = render(draw(), { exitOnCtrlC: false });
     const onResize = () => {
       const nextColumns = stdout.columns || 80;
       if (nextColumns === columns) return;
-      // Ink 按旧行数擦除，缩窄后旧行已被终端折行，必须重置备用屏幕。
-      if (useAlternateScreen && nextColumns <= bannerWidth(columns)) {
-        instance.clear();
-        stdout.write('\u001b[2J\u001b[H');
-      }
+      // 固定输出无法原地重排；窗口宽度变化时重建整个屏幕。
+      clearScreen();
       columns = nextColumns;
+      screenVersion++;
       instance.rerender(draw());
     };
     stdout.on('resize', onResize);
