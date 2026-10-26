@@ -81,6 +81,9 @@ echo "重构 src/auth.ts" | murasame   # 从标准输入读取
 |------|------|
 | `/help` | 帮助 |
 | `/clear` | 清空上下文 |
+| `/config` | 重新配置 API |
+| `/lang` | 切换语言（zh / en / ja） |
+| `/detail` | 调整命令输出详细程度（不打印 / 仅命令 / 命令+前三行 / 全部） |
 | `/exit` `/quit` | 退出 |
 | `Ctrl+C` | 中止当前任务（空闲时退出） |
 
@@ -109,10 +112,15 @@ murasame-code/
 │   ├── config.ts         # 配置读写（~/.murasame/config.json + 环境变量）
 │   ├── llm.ts            # Claude / OpenAI 双接口 + 流式 + 工具调用
 │   ├── tools.ts          # 工具定义与执行（read/write/edit/bash/grep/glob）
-│   ├── prompt.ts         # 丛雨人设 + Agent 系统提示词
+│   ├── prompt.ts         # 系统提示词组装
+│   ├── persona.ts        # 丛雨人设入口
 │   ├── agent.ts          # Agent 循环（模型 ↔ 工具）
+│   ├── i18n.ts           # i18n 运行时
+│   ├── i18n-types.ts     # i18n 类型与常量
+│   ├── locales/          # 语言词典（zh / en / ja）
 │   ├── ui.tsx            # Ink 交互式终端 UI（丛雨主题）
 │   └── theme.ts          # 配色 / ASCII 立绘 / 台词库
+├── persona/              # 丛雨人设源文件（Cursor Skill 参考）
 ├── package.json
 └── tsconfig.json
 ```
