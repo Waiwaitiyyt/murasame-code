@@ -6,7 +6,7 @@ const { spawn } = require('child_process');
 const { createHash } = require('crypto');
 const Store = require('electron-store');
 const { pathToFileURL } = require('url');
-const { languageNames, detectLanguage, translator } = require('./i18n');
+const { languageNames, detectLanguage, translator } = require('./i18n.cjs');
 
 const store = new Store();
 const isWindows = process.platform === 'win32';
