@@ -26,10 +26,21 @@ function appendBubble(role, content) {
   conversation.querySelector('.hint')?.remove();
   const bubble = document.createElement('div');
   bubble.className = `bubble ${role}`;
-  bubble.textContent = content;
+  if (role === 'assistant') {
+    bubble.dataset.rawMarkdown = content;
+    window.renderMurasameMarkdown(bubble, content);
+  } else {
+    bubble.textContent = content;
+  }
   conversation.append(bubble);
   conversation.scrollTop = conversation.scrollHeight;
   return bubble;
+}
+
+function updateAssistantMarkdown(bubble, content) {
+  if (!bubble) return;
+  bubble.dataset.rawMarkdown = content;
+  window.renderMurasameMarkdown(bubble, content);
 }
 
 function addToolEvent(content) {
@@ -373,19 +384,19 @@ document.getElementById('prompt-form').addEventListener('submit', async (event) 
   try {
     const result = await ipcRenderer.invoke('run-murasame', task);
     if (result.error) {
-      if (currentAnswer.textContent === '丛雨正在思考…') currentAnswer.textContent = result.error;
+      if (currentAnswer.dataset.rawMarkdown === '丛雨正在思考…') updateAssistantMarkdown(currentAnswer, result.error);
       currentAnswer.classList.add('error');
     }
   } catch (error) {
-    currentAnswer.textContent = error.message;
+    updateAssistantMarkdown(currentAnswer, error.message);
     currentAnswer.classList.add('error');
   }
 });
 document.getElementById('stop-agent').addEventListener('click', () => ipcRenderer.send('stop-agent'));
 ipcRenderer.on('agent-event', (_event, data) => {
   if (data.type === 'text') {
-    if (currentAnswer?.textContent === '丛雨正在思考…') currentAnswer.textContent = '';
-    if (currentAnswer) currentAnswer.textContent += data.delta;
+    if (currentAnswer?.dataset.rawMarkdown === '丛雨正在思考…') updateAssistantMarkdown(currentAnswer, '');
+    if (currentAnswer) updateAssistantMarkdown(currentAnswer, `${currentAnswer.dataset.rawMarkdown ?? ''}${data.delta}`);
     conversation.scrollTop = conversation.scrollHeight;
   } else if (data.type === 'action') {
     addToolEvent(`行动：${data.title}`);

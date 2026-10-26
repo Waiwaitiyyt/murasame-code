@@ -55,6 +55,31 @@ h1 { margin: 0 0 7px; color: var(--text); font-family: "SimSun", serif; font-siz
 .bubble { max-width: 88%; margin: 14px 0; padding: 13px 16px; border-radius: 15px; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.7; font-size: 13px; }
 .bubble.user { margin-left: auto; border-bottom-right-radius: 4px; color: var(--text); background: linear-gradient(125deg, var(--surface-lavender), var(--surface-green)); }
 .bubble.assistant { border: 1px solid var(--border); border-bottom-left-radius: 4px; color: var(--text); background: var(--surface); backdrop-filter: blur(9px); }
+.bubble.assistant { white-space: normal; }
+.bubble.assistant > :first-child { margin-top: 0; }
+.bubble.assistant > :last-child { margin-bottom: 0; }
+.bubble.assistant p { margin: 0 0 10px; }
+.bubble.assistant h1, .bubble.assistant h2, .bubble.assistant h3, .bubble.assistant h4, .bubble.assistant h5, .bubble.assistant h6 { margin: 16px 0 8px; color: var(--purple-strong); font-family: inherit; font-size: 1.18em; font-weight: 650; line-height: 1.4; }
+.bubble.assistant h1 { font-size: 1.45em; }
+.bubble.assistant h2 { font-size: 1.3em; }
+.bubble.assistant h3 { font-size: 1.18em; }
+.bubble.assistant ul, .bubble.assistant ol { margin: 4px 0 12px; padding-left: 24px; }
+.bubble.assistant li { padding-left: 3px; }
+.bubble.assistant li + li { margin-top: 3px; }
+.bubble.assistant blockquote { margin: 10px 0; padding: 2px 0 2px 12px; border-left: 3px solid var(--green); color: var(--text-soft); }
+.bubble.assistant blockquote > :first-child { margin-top: 0; }
+.bubble.assistant blockquote > :last-child { margin-bottom: 0; }
+.bubble.assistant code { padding: 2px 5px; border: 1px solid color-mix(in srgb, var(--green) 18%, var(--border)); border-radius: 5px; color: var(--green-strong); background: color-mix(in srgb, var(--surface-green) 65%, var(--surface)); font: .92em ui-monospace, SFMono-Regular, Consolas, monospace; }
+.bubble.assistant pre { overflow: auto; margin: 10px 0 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 9px; color: var(--text); background: var(--surface-muted); line-height: 1.55; tab-size: 2; }
+.bubble.assistant pre code { padding: 0; border: 0; color: inherit; background: transparent; font-size: 11px; }
+.bubble.assistant a { color: var(--purple-strong); text-decoration-color: color-mix(in srgb, var(--purple) 45%, transparent); text-underline-offset: 2px; }
+.bubble.assistant a:hover { color: var(--green-strong); }
+.bubble.assistant hr { margin: 12px 0; border: 0; border-top: 1px solid var(--border); }
+.markdown-table-wrap { max-width: 100%; overflow-x: auto; margin: 10px 0 12px; }
+.bubble.assistant table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.bubble.assistant th, .bubble.assistant td { padding: 7px 9px; border: 1px solid var(--border); text-align: left; }
+.bubble.assistant th { color: var(--green-strong); background: var(--surface-green); font-weight: 600; }
+.bubble.assistant tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-lavender) 28%, var(--surface)); }
 .bubble.error { color: var(--danger); }
 .tool-event { margin: 8px 0; padding: 8px 11px; border: 1px solid color-mix(in srgb, var(--green) 23%, var(--border)); border-radius: 9px; color: var(--green-strong); background: color-mix(in srgb, var(--surface-green) 80%, var(--surface)); font: 11px/1.55 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .composer { max-width: 850px; width: calc(100% - 52px); margin: 8px auto 19px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); box-shadow: 0 9px 28px rgba(65, 76, 65, .08); backdrop-filter: blur(18px); }
