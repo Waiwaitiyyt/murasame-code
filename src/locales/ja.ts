@@ -62,6 +62,9 @@ export const ja: LocaleMessages = {
     apiKeyHint: '`murasame --configure` で設定するか、環境変数 MURASAME_API_KEY を設定してください。',
     truncated: '（出力は切り詰め）',
     errorPrefix: 'エラー：{error}',
+    rateLimited: '再試行後もレート制限が続いています。しばらくしてから再試行してください。',
+    authFailed: 'API キーとアクセス権限を確認してください。',
+    serverUnavailable: '再試行後もモデルサービスを利用できません。しばらくしてから再試行してください。',
   },
 
   config: {
@@ -89,9 +92,20 @@ export const ja: LocaleMessages = {
     cmdConfig: 'API を再設定',
     cmdLang: '言語を切り替え',
     cmdDetail: 'コマンド出力の詳細度を調整',
+    cmdModel: 'モデルを表示・切り替え',
+    cmdCost: 'このセッションのトークン使用量を表示',
+    cmdCompact: '会話を要約して圧縮',
+    currentModel: '現在のモデル：{model}（/model 名前 で切り替え）',
+    modelSwitched: 'モデルを切り替えました → {model}',
+    tokenUsage: 'このセッションのトークン：入力 {input}、出力 {output}。実際の料金はプロバイダーの請求書を確認してください。',
+    noUsage: 'プロバイダーからストリーミングのトークン使用量が返されませんでした。実際の料金は請求書を確認してください。',
+    approvalPrompt: '重要なデータを削除・変更する可能性があります。実行するには yes と入力し、それ以外はキャンセル：',
+    compacting: '会話を要約しています…',
+    compacted: '会話を要約に圧縮しました。',
+    nothingToCompact: '圧縮する会話がありません。',
     aborted: 'ムラサメは刀を収めた（中止）',
     userPrefix: 'ご主人様 › ',
-    helpCommand: 'コマンド：/help ヘルプ · /clear 消去 · /config 設定 · /lang 言語 · /detail 詳細度 · /exit 終了 · Ctrl+C 中止',
+    helpCommand: 'コマンド：/help ヘルプ · /clear 消去 · /config 設定 · /lang 言語 · /detail 詳細度 · /model モデル · /cost 使用量 · /compact 要約 · /exit 終了 · Ctrl+C 中止',
     unknownCommand: '不明なコマンド {name}（/help を参照）',
     busy: 'ムラサメは作業中……（Ctrl+C で中止）',
     inputPrompt: 'ムラサメ',
@@ -179,6 +193,8 @@ export const ja: LocaleMessages = {
   agent: {
     toolExecError: 'ツール実行エラー：{error}',
     maxIterations: '（最大反復回数に達しました）',
+    commandApprovalRequired: 'コマンドが承認されなかったため、実行しませんでした。',
+    toolCancelled: 'ツール呼び出しを中止しました。',
   },
 
   vendors: {

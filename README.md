@@ -26,7 +26,7 @@
 
 ## 安装
 
-需要 Node.js ≥ 18。
+需要 Node.js ≥ 18.18。
 
 ```bash
 cd murasame-code
@@ -86,8 +86,14 @@ echo "重构 src/auth.ts" | murasame   # 从标准输入读取
 | `/config` | 重新配置 API |
 | `/lang` | 切换语言（zh / en / ja） |
 | `/detail` | 调整命令输出详细程度（不打印 / 仅命令 / 命令+前三行 / 全部） |
+| `/model 名称` | 查看或切换当前模型 |
+| `/cost` | 查看供应商返回的 token 用量；准确费用以供应商账单为准 |
+| `/compact` | 调用当前模型将对话压缩为摘要 |
+| `↑` / `↓` | 浏览输入历史 |
 | `/exit` `/quit` | 退出 |
 | `Ctrl+C` | 中止当前任务（空闲时退出） |
+
+常见的删除、强制重置等高风险 shell 命令会在交互模式中要求输入 `yes` 确认；print 模式无法交互确认时会跳过执行。
 
 ## 支持的接口
 
@@ -117,12 +123,14 @@ murasame-code/
 │   ├── prompt.ts         # 系统提示词组装
 │   ├── persona.ts        # 丛雨人设入口
 │   ├── agent.ts          # Agent 循环（模型 ↔ 工具）
+│   ├── errors.ts         # API 错误提示
 │   ├── i18n.ts           # i18n 运行时
 │   ├── i18n-types.ts     # i18n 类型与常量
 │   ├── locales/          # 语言词典（zh / en / ja）
 │   ├── ui.tsx            # Ink 交互式终端 UI（丛雨主题）
 │   └── theme.ts          # 配色 / ASCII 立绘 / 台词库
 ├── persona/              # 丛雨人设源文件（Cursor Skill 参考）
+├── test/                 # 回归测试
 ├── package.json
 └── tsconfig.json
 ```
@@ -133,6 +141,9 @@ murasame-code/
 npm run dev        # tsx 直接运行
 npm run build      # tsc 编译
 npm run typecheck  # 类型检查
+npm test           # 回归测试
+npm run lint       # ESLint 检查
+npm run format     # Prettier 格式化
 ```
 
 ---

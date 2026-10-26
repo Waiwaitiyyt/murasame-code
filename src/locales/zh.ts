@@ -62,6 +62,9 @@ export const zh: LocaleMessages = {
     apiKeyHint: '运行 `murasame --configure` 进行配置，或设置 MURASAME_API_KEY 环境变量。',
     truncated: '（输出已截断）',
     errorPrefix: '出错：{error}',
+    rateLimited: '请求过于频繁；已重试，请稍后再试。',
+    authFailed: 'API Key 无效或没有访问权限，请检查配置。',
+    serverUnavailable: '模型服务暂时不可用；已重试，请稍后再试。',
   },
 
   config: {
@@ -89,9 +92,20 @@ export const zh: LocaleMessages = {
     cmdConfig: '重新配置 API',
     cmdLang: '切换语言',
     cmdDetail: '调整命令输出详细程度',
+    cmdModel: '查看或切换模型',
+    cmdCost: '查看本次会话的 token 用量',
+    cmdCompact: '将对话压缩为摘要',
+    currentModel: '当前模型：{model}（使用 /model 名称 切换）',
+    modelSwitched: '模型已切换 → {model}',
+    tokenUsage: '本次会话 token：输入 {input}，输出 {output}。实际费用请查看供应商账单。',
+    noUsage: '供应商未提供流式 token 用量；实际费用请查看供应商账单。',
+    approvalPrompt: '此命令可能删除或修改重要数据。确认执行？输入 yes，其他输入取消：',
+    compacting: '正在整理对话摘要…',
+    compacted: '对话已压缩为摘要。',
+    nothingToCompact: '当前没有需要压缩的对话。',
     aborted: '丛雨停下了手中的剑（已中止）',
     userPrefix: '主人 › ',
-    helpCommand: '命令：/help 帮助 · /clear 清空 · /config 配置 · /lang 语言 · /detail 详细程度 · /exit 退出 · Ctrl+C 中止',
+    helpCommand: '命令：/help 帮助 · /clear 清空 · /config 配置 · /lang 语言 · /detail 详细程度 · /model 模型 · /cost 用量 · /compact 压缩 · /exit 退出 · Ctrl+C 中止',
     unknownCommand: '未知命令 {name}（可用 /help）',
     busy: '丛雨工作中……（Ctrl+C 中止）',
     inputPrompt: 'ムラサメ',
@@ -177,6 +191,8 @@ export const zh: LocaleMessages = {
   agent: {
     toolExecError: '工具执行异常：{error}',
     maxIterations: '（已达最大迭代次数）',
+    commandApprovalRequired: '命令未获确认，已跳过执行。',
+    toolCancelled: '工具调用已中止。',
   },
 
   vendors: {

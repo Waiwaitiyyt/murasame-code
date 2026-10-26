@@ -33,7 +33,14 @@ function ensureDir() {
 export function readConfigFile(): Partial<Config> | null {
   if (!existsSync(CONFIG_FILE)) return null;
   try {
-    return JSON.parse(readFileSync(CONFIG_FILE, 'utf8'));
+    const config = JSON.parse(readFileSync(CONFIG_FILE, 'utf8')) as Partial<Config>;
+    // 旧版本可能把明文 API Key 留在 0644 文件中；只读挂载下仍应允许读取配置。
+    try {
+      chmodSync(CONFIG_FILE, 0o600);
+    } catch {
+      // 文件不可修改时交由文件所有者处理权限
+    }
+    return config;
   } catch {
     return null;
   }
@@ -42,7 +49,7 @@ export function readConfigFile(): Partial<Config> | null {
 export function writeConfigFile(cfg: Partial<Config>): void {
   ensureDir();
   const merged = { ...readConfigFile(), ...cfg };
-  writeFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2) + '\n', 'utf8');
+  writeFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
   // API Key 明文落盘，收紧权限避免同机其他用户读取
   chmodSync(CONFIG_FILE, 0o600);
 }

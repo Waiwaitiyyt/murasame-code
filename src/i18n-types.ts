@@ -62,6 +62,9 @@ export interface LocaleMessages {
     truncated: string;
     /** 出错：{error} */
     errorPrefix: string;
+    rateLimited: string;
+    authFailed: string;
+    serverUnavailable: string;
   };
 
   config: {
@@ -96,6 +99,17 @@ export interface LocaleMessages {
     cmdConfig: string;
     cmdLang: string;
     cmdDetail: string;
+    cmdModel: string;
+    cmdCost: string;
+    cmdCompact: string;
+    currentModel: string;
+    modelSwitched: string;
+    tokenUsage: string;
+    noUsage: string;
+    approvalPrompt: string;
+    compacting: string;
+    compacted: string;
+    nothingToCompact: string;
     /** 已中止 */
     aborted: string;
     /** 用户前缀「主人 › 」 */
@@ -213,6 +227,8 @@ export interface LocaleMessages {
     toolExecError: string;
     /** （已达最大迭代次数） */
     maxIterations: string;
+    commandApprovalRequired: string;
+    toolCancelled: string;
   };
 
   vendors: {

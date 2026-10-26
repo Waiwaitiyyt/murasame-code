@@ -1,6 +1,6 @@
 import { relative, isAbsolute } from 'node:path';
 import type { ChatMessage, LLMClient, ToolCall } from './llm.js';
-import { getToolDefs, executeTool } from './tools.js';
+import { getToolDefs, executeTool, requiresCommandApproval } from './tools.js';
 import { buildSystemPrompt } from './prompt.js';
 import { t } from './i18n.js';
 
@@ -15,6 +15,8 @@ export interface AgentHooks {
   onTextDelta?: (delta: string) => void;
   /** 工具执行完成，result 为完整结果文本 */
   onToolResult?: (call: ToolCall, ok: boolean, result: string) => void;
+  onUsage?: (inputTokens: number, outputTokens: number) => void;
+  confirmTool?: (call: ToolCall) => Promise<boolean>;
 }
 
 const MAX_ITERATIONS = 40;
@@ -59,20 +61,59 @@ export function newConversation(cwd: string): Conversation {
  */
 export function trimConversation(conversation: Conversation, max = MAX_HISTORY_MESSAGES): void {
   if (conversation.length <= max) return;
-  const system = conversation[0];
   const rest = conversation.slice(1);
   const keep = max - 1;
   if (rest.length <= keep) return;
 
-  let cut = rest.length - keep;
-  for (let i = cut; i < rest.length; i++) {
+  const target = rest.length - keep;
+  let cut = -1;
+  for (let i = target; i < rest.length; i++) {
     if (rest[i].role === 'user') {
       cut = i;
       break;
     }
   }
-  conversation.splice(1, cut, ...rest.slice(cut));
-  if (conversation[0] !== system) conversation.unshift(system);
+  if (cut < 0) {
+    for (let i = target - 1; i >= 0; i--) {
+      if (rest[i].role === 'user') {
+        cut = i;
+        break;
+      }
+    }
+  }
+  if (cut <= 0) return; // 单轮工具调用过长时不能拆开 tool_use / tool_result
+  conversation.splice(1, cut);
+}
+
+/** 用模型把旧对话压成一条摘要，保留后续轮次需要的背景。 */
+export async function compactConversation(
+  client: LLMClient,
+  conversation: Conversation,
+  signal: AbortSignal,
+): Promise<{ usage?: { inputTokens: number; outputTokens: number } }> {
+  if (conversation.length <= 1) return {};
+  const history = conversation.slice(1).map((message) => {
+    if (message.role === 'tool') return `tool ${message.name}: ${message.content.slice(0, 2000)}`;
+    if (message.role === 'assistant') {
+      const calls = message.toolCalls.map((call) => `${call.name}(${JSON.stringify(call.input).slice(0, 500)})`).join(', ');
+      return `assistant: ${message.content.slice(0, 4000)}${calls ? `\ntools: ${calls}` : ''}`;
+    }
+    return `user: ${message.content.slice(0, 4000)}`;
+  }).join('\n\n');
+  const context = history.length > 80_000
+    ? history.slice(0, 10_000) + '\n[older details omitted]\n' + history.slice(-70_000)
+    : history;
+  const result = await client.stream([
+    { role: 'system', content: 'Summarize this coding-agent conversation in the same language as the user. Preserve user requirements, decisions, file changes, unresolved problems, and important tool results. Be concise and factual.' },
+    { role: 'user', content: context },
+  ], [], {}, signal);
+  const summary = result.text.trim();
+  if (!summary) throw new Error('Could not summarize the conversation');
+  conversation.splice(1, conversation.length - 1, {
+    role: 'user',
+    content: `Previous conversation summary:\n${summary}`,
+  });
+  return { usage: result.usage };
 }
 
 /**
@@ -90,48 +131,85 @@ export async function runTurn(
   trimConversation(conversation);
   conversation.push({ role: 'user', content: userText });
 
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
-    if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-
-    const start = Date.now();
-    const { text, toolCalls } = await client.stream(
-      conversation,
-      getToolDefs(),
-      { onTextDelta: hooks.onTextDelta },
-      signal,
-    );
-    const seconds = (Date.now() - start) / 1000;
-
-    hooks.onThinking?.(seconds);
-
-    if (toolCalls.length === 0) {
-      conversation.push({ role: 'assistant', content: text, toolCalls: [] });
-      if (text) hooks.onText?.(text);
-      return text;
-    }
-
-    if (text) hooks.onActionTitle?.(text);
-
-    // 记录本次 assistant 消息（含工具调用）
-    conversation.push({ role: 'assistant', content: text, toolCalls });
-
-    for (const call of toolCalls) {
+  try {
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
       if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-      let result: string;
-      let ok = true;
-      try {
-        result = await executeTool(call.name, call.input, cwd, signal);
-      } catch (e) {
-        ok = false;
-        result = t('agent.toolExecError', { error: (e as Error).message });
-      }
-      hooks.onToolResult?.(call, ok, result);
-      conversation.push({ role: 'tool', toolCallId: call.id, name: call.name, content: result });
-    }
-  }
 
-  const maxed = t('agent.maxIterations');
-  conversation.push({ role: 'assistant', content: maxed, toolCalls: [] });
-  hooks.onText?.(maxed);
-  return maxed;
+      const start = Date.now();
+      const { text, toolCalls, usage } = await client.stream(
+        conversation,
+        getToolDefs(),
+        { onTextDelta: hooks.onTextDelta },
+        signal,
+      );
+      const seconds = (Date.now() - start) / 1000;
+
+      hooks.onThinking?.(seconds);
+      if (usage) hooks.onUsage?.(usage.inputTokens, usage.outputTokens);
+
+      if (toolCalls.length === 0) {
+        conversation.push({ role: 'assistant', content: text, toolCalls: [] });
+        if (text) hooks.onText?.(text);
+        return text;
+      }
+
+      if (text) hooks.onActionTitle?.(text);
+
+      // 记录本次 assistant 消息（含工具调用）
+      conversation.push({ role: 'assistant', content: text, toolCalls });
+
+      for (const call of toolCalls) {
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        let result: string;
+        let ok = true;
+        try {
+          if (call.name === 'bash' && requiresCommandApproval(String(call.input.command ?? ''))) {
+            const approved = await hooks.confirmTool?.(call) ?? false;
+            if (!approved) {
+              ok = false;
+              result = t('agent.commandApprovalRequired');
+            } else {
+              if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+              result = await executeTool(call.name, call.input, cwd, signal);
+            }
+          } else {
+            result = await executeTool(call.name, call.input, cwd, signal);
+          }
+        } catch (e) {
+          ok = false;
+          result = t('agent.toolExecError', { error: (e as Error).message });
+        }
+        hooks.onToolResult?.(call, ok, result);
+        conversation.push({ role: 'tool', toolCallId: call.id, name: call.name, content: result });
+      }
+    }
+
+    const maxed = t('agent.maxIterations');
+    conversation.push({ role: 'assistant', content: maxed, toolCalls: [] });
+    hooks.onText?.(maxed);
+    return maxed;
+  } catch (error) {
+    // 中止发生在多个工具调用之间时，补齐尚未返回的结果，避免下一轮 API 拒绝历史。
+    const lastAssistant = [...conversation].reverse().findIndex((message) => message.role === 'assistant');
+    if (lastAssistant >= 0) {
+      const index = conversation.length - 1 - lastAssistant;
+      const message = conversation[index];
+      if (message.role === 'assistant' && message.toolCalls.length > 0) {
+        const returned = new Set(conversation.slice(index + 1)
+          .filter((item): item is Extract<ChatMessage, { role: 'tool' }> => item.role === 'tool')
+          .map((item) => item.toolCallId));
+        for (const call of message.toolCalls) {
+          if (!returned.has(call.id)) {
+            conversation.push({
+              role: 'tool',
+              toolCallId: call.id,
+              name: call.name,
+              content: t('agent.toolCancelled'),
+            });
+          }
+        }
+      }
+    }
+    throw error;
+  }
 }

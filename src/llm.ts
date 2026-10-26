@@ -38,6 +38,7 @@ export interface StreamHooks {
 export interface StreamResult {
   text: string;
   toolCalls: ToolCall[];
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 export interface LLMClient {
@@ -60,9 +61,10 @@ class ClaudeClient implements LLMClient {
   provider = 'claude' as const;
   private client: Anthropic;
   private model: string;
+  private cacheSupported = true;
 
   constructor(cfg: Config) {
-    this.client = new Anthropic({ apiKey: cfg.apiKey, baseURL: cfg.baseUrl });
+    this.client = new Anthropic({ apiKey: cfg.apiKey, baseURL: cfg.baseUrl, maxRetries: 2 });
     this.model = cfg.model;
   }
 
@@ -87,40 +89,63 @@ class ClaudeClient implements LLMClient {
       input_schema: t.parameters,
     }));
 
-    const realStream = this.client.messages.stream(
-      {
-        model: this.model,
-        max_tokens: MAX_TOKENS,
-        system,
-        messages: anthropicMessages,
-        tools: anthropicTools,
-      },
-      { signal },
-    );
+    const request = async (cached: boolean): Promise<StreamResult> => {
+      // 断点放在稳定的 system 末尾，工具定义也包含在其缓存前缀中。
+      const cachedSystem = [{ type: 'text' as const, text: system, cache_control: { type: 'ephemeral' as const } }];
+      const realStream = this.client.messages.stream(
+        {
+          model: this.model,
+          max_tokens: MAX_TOKENS,
+          system: cached ? cachedSystem : system,
+          messages: anthropicMessages,
+          ...(anthropicTools.length > 0 ? { tools: anthropicTools } : {}),
+        },
+        { signal },
+      );
 
-    let text = '';
-    const toolCalls: ToolCall[] = [];
-
-    realStream.on('text', (delta) => {
-      text += delta;
-      hooks.onTextDelta?.(delta);
-    });
-
-    const final = await realStream.finalMessage();
-
-    for (const block of final.content) {
-      if (block.type === 'text') {
-        // 文本已通过 on('text') 累积，跳过
-      } else if (block.type === 'tool_use') {
-        toolCalls.push({
-          id: block.id,
-          name: block.name,
-          input: (block.input ?? {}) as Record<string, unknown>,
-        });
+      let text = '';
+      const toolCalls: ToolCall[] = [];
+      realStream.on('text', (delta) => {
+        text += delta;
+        hooks.onTextDelta?.(delta);
+      });
+      const final = await realStream.finalMessage();
+      for (const block of final.content) {
+        if (block.type === 'tool_use') {
+          toolCalls.push({
+            id: block.id,
+            name: block.name,
+            input: (block.input ?? {}) as Record<string, unknown>,
+          });
+        }
       }
-    }
+      const usage = final.usage as typeof final.usage & {
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+      };
+      return {
+        text,
+        toolCalls,
+        usage: {
+          inputTokens: usage.input_tokens
+            + (usage.cache_creation_input_tokens ?? 0)
+            + (usage.cache_read_input_tokens ?? 0),
+          outputTokens: usage.output_tokens,
+        },
+      };
+    };
 
-    return { text, toolCalls };
+    const cached = this.cacheSupported && Boolean(system);
+    try {
+      return await request(cached);
+    } catch (error) {
+      const e = error as { status?: number };
+      if (cached && e.status === 400) {
+        this.cacheSupported = false;
+        return request(false);
+      }
+      throw error;
+    }
   }
 }
 
@@ -132,10 +157,12 @@ class OpenAIClient implements LLMClient {
   provider = 'openai' as const;
   private client: OpenAI;
   private model: string;
+  private includeUsage: boolean;
 
   constructor(cfg: Config) {
-    this.client = new OpenAI({ apiKey: cfg.apiKey, baseURL: cfg.baseUrl });
+    this.client = new OpenAI({ apiKey: cfg.apiKey, baseURL: cfg.baseUrl, maxRetries: 2 });
     this.model = cfg.model;
+    this.includeUsage = new URL(cfg.baseUrl).hostname === 'api.openai.com';
   }
 
   async stream(
@@ -154,17 +181,22 @@ class OpenAIClient implements LLMClient {
       {
         model: this.model,
         messages: openaiMessages,
-        tools: openaiTools,
+        ...(openaiTools.length > 0 ? { tools: openaiTools } : {}),
         stream: true,
+        ...(this.includeUsage ? { stream_options: { include_usage: true } } : {}),
         max_tokens: MAX_TOKENS,
       },
       { signal },
     );
 
     let text = '';
+    let usage: StreamResult['usage'];
     const toolCallsMap = new Map<number, { id: string; name: string; args: string }>();
 
     for await (const chunk of stream) {
+      if (chunk.usage) {
+        usage = { inputTokens: chunk.usage.prompt_tokens, outputTokens: chunk.usage.completion_tokens };
+      }
       const delta = chunk.choices[0]?.delta;
       if (!delta) continue;
 
@@ -194,7 +226,7 @@ class OpenAIClient implements LLMClient {
       input: safeParse(tc.args),
     }));
 
-    return { text, toolCalls };
+    return { text, toolCalls, usage };
   }
 }
 

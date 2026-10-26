@@ -2,8 +2,8 @@ import { useRef, useState, useEffect } from 'react';
 import { render, Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import stringWidth from 'string-width';
-import { createClient, type LLMClient } from './llm.js';
-import { runTurn, newConversation, type Conversation, toolLabel, toolTarget } from './agent.js';
+import { createClient, type LLMClient, type ToolCall } from './llm.js';
+import { runTurn, compactConversation, newConversation, type Conversation, toolLabel, toolTarget } from './agent.js';
 import {
   resolveConfig,
   writeConfigFile,
@@ -16,6 +16,7 @@ import {
 import { theme, buildBanner, formatCwd } from './theme.js';
 import { pickLine } from './persona.js';
 import { setLanguage, getLanguage, t, LANGUAGES, isLanguage, type Language } from './i18n.js';
+import { describeError } from './errors.js';
 
 type Item =
   | { kind: 'banner' }
@@ -32,6 +33,9 @@ const COMMANDS = [
   { cmd: '/config', descKey: 'ui.cmdConfig' },
   { cmd: '/lang', descKey: 'ui.cmdLang' },
   { cmd: '/detail', descKey: 'ui.cmdDetail' },
+  { cmd: '/model', descKey: 'ui.cmdModel' },
+  { cmd: '/cost', descKey: 'ui.cmdCost' },
+  { cmd: '/compact', descKey: 'ui.cmdCompact' },
   { cmd: '/exit', descKey: 'ui.cmdExit' },
 ];
 
@@ -56,8 +60,14 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
   const [items, setItems] = useState<Item[]>([{ kind: 'banner' }]);
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState('');
+  const inputHistory = useRef<string[]>([]);
+  const historyIndex = useRef<number | null>(null);
+  const historyDraft = useRef('');
   const [detail, setDetail] = useState<DetailLevel>(3);
   const [streamText, setStreamText] = useState('');
+  const [usage, setUsage] = useState({ input: 0, output: 0 });
+  const [approval, setApproval] = useState<ToolCall | null>(null);
+  const approvalRef = useRef<((approved: boolean) => void) | null>(null);
   const { exit } = useApp();
   const abortRef = useRef<AbortController | null>(null);
   const [greet, setGreet] = useState(() => pickLine('greet'));
@@ -81,6 +91,27 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
   const push = (item: Item) => setItems((prev) => [...prev, item]);
 
   useInput((inputStr, key) => {
+    if (!busy && mode.kind === 'chat' && (key.upArrow || key.downArrow)) {
+      const history = inputHistory.current;
+      if (key.upArrow && history.length > 0) {
+        if (historyIndex.current === null) {
+          historyDraft.current = input;
+          historyIndex.current = history.length - 1;
+        } else {
+          historyIndex.current = Math.max(0, historyIndex.current - 1);
+        }
+        setInput(history[historyIndex.current]);
+      } else if (key.downArrow && historyIndex.current !== null) {
+        historyIndex.current++;
+        if (historyIndex.current >= history.length) {
+          historyIndex.current = null;
+          setInput(historyDraft.current);
+        } else {
+          setInput(history[historyIndex.current]);
+        }
+      }
+      return;
+    }
     if (key.ctrl && inputStr === 'c') {
       if (busy && abortRef.current) {
         abortRef.current.abort();
@@ -274,6 +305,13 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
   function onSubmit(text: string) {
     const q = text.trim();
     setInput('');
+    if (approvalRef.current) {
+      approvalRef.current(q.toLowerCase() === 'yes');
+      return;
+    }
+    historyIndex.current = null;
+    historyDraft.current = '';
+    if (q && inputHistory.current.at(-1) !== q) inputHistory.current.push(q);
     if (mode.kind !== 'chat') {
       void handleModeInput(q);
       return;
@@ -321,13 +359,28 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
               target: toolTarget(call, cwd),
               result,
             }),
+          onUsage: (inputTokens, outputTokens) =>
+            setUsage((prev) => ({ input: prev.input + inputTokens, output: prev.output + outputTokens })),
+          confirmTool: (call) => new Promise<boolean>((resolve) => {
+            const finish = (approved: boolean) => {
+              controller.signal.removeEventListener('abort', onAbort);
+              approvalRef.current = null;
+              setApproval(null);
+              resolve(approved);
+            };
+            const onAbort = () => finish(false);
+            approvalRef.current = finish;
+            setApproval(call);
+            controller.signal.addEventListener('abort', onAbort, { once: true });
+            if (controller.signal.aborted) onAbort();
+          }),
         },
         controller.signal,
         cwd,
       );
     } catch (e) {
       if (!controller.signal.aborted) {
-        push({ kind: 'status', level: 'err', text: t('run.errorPrefix', { error: (e as Error).message }) });
+        push({ kind: 'status', level: 'err', text: t('run.errorPrefix', { error: describeError(e) }) });
       }
     } finally {
       setStreamText('');
@@ -347,6 +400,7 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
       case '/clear':
         setItems([{ kind: 'banner' }]);
         convRef.current = newConversation(cwd);
+        setUsage({ input: 0, output: 0 });
         break;
       case '/help':
         push({ kind: 'status', level: 'info', text: t('ui.helpCommand') });
@@ -365,8 +419,61 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
         else startDetailMode();
         break;
       }
+      case '/model': {
+        if (!arg) {
+          push({ kind: 'status', level: 'info', text: t('ui.currentModel', { model: cfg.model }) });
+          break;
+        }
+        const next = { ...cfg, model: arg };
+        writeConfigFile({ model: arg });
+        setCfg(next);
+        clientRef.current = createClient(next);
+        push({ kind: 'status', level: 'info', text: t('ui.modelSwitched', { model: arg }) });
+        break;
+      }
+      case '/cost':
+        push({
+          kind: 'status',
+          level: 'info',
+          text: usage.input + usage.output > 0
+            ? t('ui.tokenUsage', { input: usage.input, output: usage.output })
+            : t('ui.noUsage'),
+        });
+        break;
+      case '/compact':
+        void compactHistory();
+        break;
       default:
         push({ kind: 'status', level: 'err', text: t('ui.unknownCommand', { name }) });
+    }
+  }
+
+  async function compactHistory() {
+    if (busy) return;
+    if (convRef.current.length <= 1) {
+      push({ kind: 'status', level: 'info', text: t('ui.nothingToCompact') });
+      return;
+    }
+    setBusy(true);
+    push({ kind: 'status', level: 'info', text: t('ui.compacting') });
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const { usage: compactUsage } = await compactConversation(clientRef.current, convRef.current, controller.signal);
+      if (compactUsage) {
+        setUsage((prev) => ({
+          input: prev.input + compactUsage.inputTokens,
+          output: prev.output + compactUsage.outputTokens,
+        }));
+      }
+      push({ kind: 'status', level: 'info', text: t('ui.compacted') });
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        push({ kind: 'status', level: 'err', text: t('run.errorPrefix', { error: describeError(error) }) });
+      }
+    } finally {
+      abortRef.current = null;
+      setBusy(false);
     }
   }
 
@@ -502,7 +609,18 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
 
       <Box marginTop={1}>
         {busy ? (
-          <Text color={theme.dim}>{t('ui.busy')}</Text>
+          approval ? (
+            <Box flexDirection="column">
+              <Text color={theme.warn}>{t('ui.approvalPrompt')}</Text>
+              <Text color={theme.white}>{String(approval.input.command ?? '')}</Text>
+              <Box>
+                <Text color={theme.mint}>yes ❯ </Text>
+                <TextInput value={input} onChange={setInput} onSubmit={onSubmit} />
+              </Box>
+            </Box>
+          ) : (
+            <Text color={theme.dim}>{t('ui.busy')}</Text>
+          )
         ) : (
           <Box flexDirection="column">
             {mode.kind === 'chat' && input.startsWith('/') && (
@@ -528,7 +646,10 @@ function App({ client, config, cwd, columns }: { client: LLMClient; config: Conf
                 {t('ui.inputPrompt')}
               </Text>
               <Text color={theme.ink}> ❯ </Text>
-              <TextInput value={input} onChange={setInput} onSubmit={onSubmit} />
+              <TextInput value={input} onChange={(value) => {
+                historyIndex.current = null;
+                setInput(value);
+              }} onSubmit={onSubmit} />
             </Box>
           </Box>
         )}

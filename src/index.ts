@@ -17,6 +17,7 @@ import { runInteractive } from './ui.js';
 import { theme, buildBanner, formatCwd, VERSION } from './theme.js';
 import { pickLine } from './persona.js';
 import { t, setLanguage } from './i18n.js';
+import { describeError } from './errors.js';
 
 // ---------------------------------------------------------------------------
 // 参数解析
@@ -158,7 +159,7 @@ async function askVendor(rl: readline.Interface): Promise<Vendor> {
   VENDORS.forEach((v, i) => {
     console.log(colorize(`  ${i + 1}. ${t(`vendors.${v.id}`)}`, theme.plum));
   });
-  while (true) {
+  for (;;) {
     const answer = (await rl.question(t('config.inputIndex'))).trim();
     const n = Number(answer);
     if (Number.isInteger(n) && n >= 1 && n <= VENDORS.length) return VENDORS[n - 1];
@@ -182,7 +183,7 @@ async function askModelChoice(
   }
   console.log(colorize(t('config.manualModelOption', { def }), theme.dim));
 
-  while (true) {
+  for (;;) {
     const answer = (await rl.question(t('config.inputIndex'))).trim();
     if (answer === '' || answer === '0') {
       const manual = await ask(rl, t('config.modelName'), def);
@@ -374,6 +375,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-  process.stderr.write(colorize(t('run.errorPrefix', { error: (e as Error).message }) + '\n', theme.err));
+  process.stderr.write(colorize(t('run.errorPrefix', { error: describeError(e) }) + '\n', theme.err));
   process.exit(1);
 });

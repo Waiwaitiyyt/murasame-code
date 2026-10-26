@@ -1,12 +1,9 @@
-import { exec } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, readdirSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { join, dirname, isAbsolute, relative, resolve } from 'node:path';
-import { promisify } from 'node:util';
 import fg from 'fast-glob';
 import type { ToolDef } from './llm.js';
 import { t } from './i18n.js';
-
-const execAsync = promisify(exec);
 
 // ---------------------------------------------------------------------------
 // 工具定义（归一化 schema，按当前语言生成描述）
@@ -104,11 +101,11 @@ export async function executeTool(
 ): Promise<string> {
   switch (name) {
     case 'read_file':
-      return readFile(input);
+      return readFile(input, cwd);
     case 'write_file':
-      return writeFile(input);
+      return writeFile(input, cwd);
     case 'edit':
-      return editFile(input);
+      return editFile(input, cwd);
     case 'bash':
       return runBash(input, cwd, signal);
     case 'grep_search':
@@ -132,20 +129,52 @@ function toAbs(p: string, cwd: string): string {
   return isAbsolute(p) ? p : resolve(cwd, p);
 }
 
+/** shell 无法完整静态解析；对常见破坏性命令保守地要求交互确认。 */
+export function requiresCommandApproval(command: string): boolean {
+  return /\b(?:rm|rmdir|unlink|shred|mkfs|sudo)\s+\S/i.test(command)
+    || /\bgit\s+(?:reset\s+--hard|clean\s+-\S*?[fd]|push\s+--force)/i.test(command)
+    || /\b(?:chmod|chown)\s+-R\b/i.test(command)
+    || /\bdd\s+[^\n]*\bof=\/dev\//i.test(command)
+    || /\b(?:curl|wget)\b[^\n|]*\|\s*(?:sh|bash)\b/i.test(command);
+}
+
+function diffPreview(before: string, after: string): string {
+  if (before === after) return '';
+  const oldLines = before ? before.split('\n') : [];
+  const newLines = after ? after.split('\n') : [];
+  let start = 0;
+  while (start < oldLines.length && start < newLines.length && oldLines[start] === newLines[start]) start++;
+  let oldEnd = oldLines.length;
+  let newEnd = newLines.length;
+  while (oldEnd > start && newEnd > start && oldLines[oldEnd - 1] === newLines[newEnd - 1]) {
+    oldEnd--;
+    newEnd--;
+  }
+  const removed = oldLines.slice(start, oldEnd);
+  const added = newLines.slice(start, newEnd);
+  const shown = [...removed.map((line) => `- ${line}`), ...added.map((line) => `+ ${line}`)];
+  const maxLines = 24;
+  const preview = shown.slice(0, maxLines).map((line) =>
+    line.length > MAX_LINE_LENGTH ? line.slice(0, MAX_LINE_LENGTH) + '…' : line,
+  );
+  if (shown.length > maxLines) preview.push(`… (${shown.length - maxLines} more lines)`);
+  return `@@ line ${start + 1} @@\n${preview.join('\n')}`;
+}
+
 const MAX_FILE_BYTES = 5 * 1024 * 1024; // 超过 5MB 直接拒绝，避免撑爆上下文
 const MAX_READ_LINES = 2000; // 未指定 limit 时默认最多读的行数
 const MAX_LINE_LENGTH = 2000; // 单行超长时截断，避免压缩后的 bundle 撑爆上下文
 
-function readFile(input: Record<string, unknown>): string {
-  const p = toAbs(asString(input.file_path), process.cwd());
+function readFile(input: Record<string, unknown>, cwd: string): string {
+  const p = toAbs(asString(input.file_path), cwd);
   if (!existsSync(p)) return t('tools.fileNotFound', { path: p });
   const st = statSync(p);
   if (st.isDirectory()) return t('tools.isDirectory', { path: p });
   if (st.size > MAX_FILE_BYTES) return t('tools.fileTooLarge', { path: p });
   const content = readFileSync(p, 'utf8');
   const lines = content.split('\n');
-  const offset = asNumber(input.offset) ?? 0;
-  const limit = asNumber(input.limit) ?? MAX_READ_LINES;
+  const offset = Math.max(0, Math.floor(asNumber(input.offset) ?? 0));
+  const limit = Math.min(MAX_READ_LINES, Math.max(1, Math.floor(asNumber(input.limit) ?? MAX_READ_LINES)));
   const slice = lines.slice(offset, offset + limit);
   const numbered = slice
     .map((l, i) => {
@@ -163,17 +192,18 @@ function readFile(input: Record<string, unknown>): string {
   return `${header}\n${numbered}`;
 }
 
-function writeFile(input: Record<string, unknown>): string {
-  const p = toAbs(asString(input.file_path), process.cwd());
+function writeFile(input: Record<string, unknown>, cwd: string): string {
+  const p = toAbs(asString(input.file_path), cwd);
   const content = asString(input.content);
+  const before = existsSync(p) && statSync(p).size <= MAX_FILE_BYTES ? readFileSync(p, 'utf8') : '';
   const dir = dirname(p);
   if (dir && !existsSync(dir)) mkdirSync(dir, { recursive: true });
   writeFileSync(p, content, 'utf8');
-  return t('tools.wroteBytes', { bytes: Buffer.byteLength(content, 'utf8'), path: p });
+  return `${t('tools.wroteBytes', { bytes: Buffer.byteLength(content, 'utf8'), path: p })}\n${diffPreview(before, content)}`;
 }
 
-function editFile(input: Record<string, unknown>): string {
-  const p = toAbs(asString(input.file_path), process.cwd());
+function editFile(input: Record<string, unknown>, cwd: string): string {
+  const p = toAbs(asString(input.file_path), cwd);
   const oldStr = asString(input.old_string);
   const newStr = asString(input.new_string);
   const replaceAll = input.replace_all === true;
@@ -191,27 +221,75 @@ function editFile(input: Record<string, unknown>): string {
 
   const next = replaceAll ? content.split(oldStr).join(newStr) : content.replace(oldStr, () => newStr);
   writeFileSync(p, next, 'utf8');
-  return t('tools.replaced', { count: replaceAll ? count : 1, path: p });
+  return `${t('tools.replaced', { count: replaceAll ? count : 1, path: p })}\n${diffPreview(content, next)}`;
 }
 
 async function runBash(input: Record<string, unknown>, cwd: string, signal?: AbortSignal): Promise<string> {
   const command = asString(input.command);
   if (!command) return t('tools.commandEmpty');
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  let timedOut = false;
   try {
-    const { stdout, stderr } = await execAsync(command, {
-      cwd,
-      timeout: 120_000,
-      maxBuffer: 8 * 1024 * 1024,
-      shell: '/bin/bash',
-      signal,
+    const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      const child = spawn('/bin/bash', ['-c', command], {
+        cwd,
+        detached: process.platform !== 'win32',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      let bytes = 0;
+      let tooLarge = false;
+      const kill = () => {
+        if (child.pid && process.platform !== 'win32') {
+          try {
+            process.kill(-child.pid, 'SIGKILL');
+            return;
+          } catch {
+            // 进程组已退出时尝试终止 shell 本身
+          }
+        }
+        child.kill('SIGKILL');
+      };
+      const onAbort = () => kill();
+      const timer = setTimeout(() => {
+        timedOut = true;
+        kill();
+      }, 120_000);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) onAbort();
+      const collect = (chunk: Buffer, stream: 'stdout' | 'stderr') => {
+        bytes += chunk.length;
+        if (bytes > 8 * 1024 * 1024) {
+          tooLarge = true;
+          kill();
+          return;
+        }
+        if (stream === 'stdout') stdout += chunk.toString('utf8');
+        else stderr += chunk.toString('utf8');
+      };
+      child.stdout.on('data', (chunk: Buffer) => collect(chunk, 'stdout'));
+      child.stderr.on('data', (chunk: Buffer) => collect(chunk, 'stderr'));
+      child.on('error', (error) => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        reject(error);
+      });
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        if (code === 0 && !tooLarge && !timedOut) resolve({ stdout, stderr });
+        else reject({ code, stdout, stderr, message: tooLarge ? 'Command output exceeded 8MB' : '' });
+      });
     });
     const out = `${stdout}${stderr ? `\n[stderr]\n${stderr}` : ''}`;
     if (!out.trim()) return t('tools.noOutput');
     return `[cwd: ${cwd}]\n${out}`;
   } catch (err) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const e = err as { stdout?: string; stderr?: string; code?: number; message?: string; killed?: boolean };
     const out = [e.stdout, e.stderr ? `\n[stderr]\n${e.stderr}` : ''].filter(Boolean).join('\n');
-    const killed = e.killed ? `\n${t('tools.commandTimeout')}` : '';
+    const killed = timedOut ? `\n${t('tools.commandTimeout')}` : '';
     return t('tools.commandExitCode', { code: e.code ?? '?', killed }) + `\n${out || e.message || ''}`;
   }
 }
@@ -221,6 +299,9 @@ async function grepSearch(input: Record<string, unknown>, cwd: string): Promise<
   if (!pattern) return t('tools.patternEmpty');
   const base = toAbs(asString(input.path) || cwd, cwd);
   const glob = asString(input.glob) || '**/*';
+  const ignore = input.path || input.glob
+    ? ['**/node_modules/**', '**/.git/**']
+    : ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/coverage/**', '**/.cache/**'];
   let files: string[];
   if (existsSync(base) && !statSync(base).isDirectory()) {
     files = [base];
@@ -230,7 +311,7 @@ async function grepSearch(input: Record<string, unknown>, cwd: string): Promise<
       dot: false,
       onlyFiles: true,
       followSymbolicLinks: false,
-      ignore: ['**/node_modules/**', '**/.git/**'],
+      ignore,
     });
   }
 
@@ -278,7 +359,7 @@ async function globFiles(input: Record<string, unknown>, cwd: string): Promise<s
     cwd: base,
     dot: false,
     onlyFiles: false,
-    ignore: ['**/node_modules/**', '**/.git/**'],
+    ignore: input.path ? ['**/node_modules/**', '**/.git/**'] : ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/coverage/**', '**/.cache/**'],
   });
   if (!files.length) return t('tools.noMatches', { pattern });
   return files.map((f) => relative(cwd, isAbsolute(f) ? f : join(base, f))).slice(0, 500).join('\n');

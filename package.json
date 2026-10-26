@@ -2,6 +2,10 @@
   "name": "murasame-code",
   "version": "0.1.0",
   "description": "丛雨代码 —— 终端里的丛雨（千恋＊万花）AI 编程代理",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Waiwaitiyyt/murasame-code.git"
+  },
   "license": "GPL-3.0-only",
   "type": "module",
   "bin": {
@@ -24,7 +28,7 @@
     "openai"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=18.18.0"
   },
   "scripts": {
     "build": "tsc",
@@ -32,6 +36,8 @@
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
+    "lint": "eslint src test --ext .ts,.tsx",
+    "format": "prettier --write src test",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -47,6 +53,10 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "prettier": "^3.6.2",
     "tsx": "^4.16.0",
     "typescript": "^5.5.0"
   }
