@@ -7,6 +7,22 @@
   "bin": {
     "murasame": "./bin/murasame.js"
   },
+  "files": [
+    "bin",
+    "dist",
+    "persona",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "murasame",
+    "cli",
+    "coding-agent",
+    "ai",
+    "terminal",
+    "anthropic",
+    "openai"
+  ],
   "engines": {
     "node": ">=18"
   },
@@ -14,7 +30,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
