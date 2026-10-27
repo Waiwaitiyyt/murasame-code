@@ -7,7 +7,7 @@ const { createHash } = require('crypto');
 const Store = require('electron-store');
 const { pathToFileURL } = require('url');
 const { languageNames, detectLanguage, translator } = require('./i18n.cjs');
-const { workbenchTranslate } = require('./workbench-i18n.js');
+const { workbenchTranslate } = require('./workbench-i18n.cjs');
 
 const store = new Store();
 const isWindows = process.platform === 'win32';
