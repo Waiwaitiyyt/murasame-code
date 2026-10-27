@@ -55,7 +55,7 @@
     <section id="agent" class="page active">
       <div class="welcome"><div class="seal">雨</div><div><h1>汝の願い、聞き届けよう。</h1><p>丛雨会在选定的工作目录里阅读和修改项目。</p></div></div>
       <div id="conversation" class="conversation"><div class="hint">试试：<button class="suggestion">阅读项目结构并总结</button><button class="suggestion">检查当前项目中的问题</button></div></div>
-      <form id="prompt-form" class="composer"><textarea id="prompt" rows="3" placeholder="描述你要完成的任务…（Enter 发送，Shift+Enter 换行）"></textarea><div class="composer-footer"><span id="agent-status">由 murasame-code 提供 · 请检查 AI 生成的修改</span><div><button id="stop-agent" type="button" hidden>停止</button><button id="send" type="submit">交给丛雨 ↗</button></div></div></form>
+      <form id="prompt-form" class="composer"><div id="slash-menu" class="slash-menu" role="listbox" aria-label="会话命令" hidden></div><textarea id="prompt" rows="3" placeholder="描述任务，或输入 / 使用命令…（Enter 发送，Shift+Enter 换行）" aria-controls="slash-menu" aria-expanded="false"></textarea><div class="composer-footer"><span id="agent-status">由 murasame-code 提供 · 请检查 AI 生成的修改</span><div><button id="stop-agent" type="button" hidden>停止</button><button id="send" type="submit">交给丛雨 ↗</button></div></div></form>
     </section>
     <section id="files" class="page workbench-page">
       <aside class="file-sidebar"><div class="panel-heading"><b>项目文件</b><button id="refresh-files" title="刷新">↻</button></div><div id="file-breadcrumb"></div><div id="file-list"></div></aside>

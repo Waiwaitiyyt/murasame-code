@@ -82,7 +82,12 @@ h1 { margin: 0 0 7px; color: var(--text); font-family: "SimSun", serif; font-siz
 .bubble.assistant tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-lavender) 28%, var(--surface)); }
 .bubble.error { color: var(--danger); }
 .tool-event { margin: 8px 0; padding: 8px 11px; border: 1px solid color-mix(in srgb, var(--green) 23%, var(--border)); border-radius: 9px; color: var(--green-strong); background: color-mix(in srgb, var(--surface-green) 80%, var(--surface)); font: 11px/1.55 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-.composer { max-width: 850px; width: calc(100% - 52px); margin: 8px auto 19px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); box-shadow: 0 9px 28px rgba(65, 76, 65, .08); backdrop-filter: blur(18px); }
+.composer { position: relative; max-width: 850px; width: calc(100% - 52px); margin: 8px auto 19px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); box-shadow: 0 9px 28px rgba(65, 76, 65, .08); backdrop-filter: blur(18px); }
+.slash-menu { position: absolute; z-index: 5; bottom: calc(100% + 6px); left: 0; width: min(390px, 100%); max-height: 300px; overflow: auto; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); box-shadow: var(--shadow); }
+.slash-menu[hidden] { display: none; }
+.slash-option { width: 100%; display: flex; gap: 12px; padding: 8px 10px; border: 0; text-align: left; background: transparent; font-size: 11px; }
+.slash-option[aria-selected="true"], .slash-option:hover { background: var(--surface-green); }
+.slash-option code { min-width: 78px; color: var(--purple-strong); font-weight: 700; }
 .composer textarea { width: 100%; min-height: 54px; resize: vertical; border: 0; outline: 0; color: var(--text); background: transparent; font: inherit; font-size: 13px; }
 .composer textarea::placeholder { color: var(--text-muted); }
 .composer-footer { display: flex; align-items: center; justify-content: space-between; color: var(--text-muted); font-size: 10px; }

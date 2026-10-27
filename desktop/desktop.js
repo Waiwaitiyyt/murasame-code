@@ -9,6 +9,9 @@ let terminalRunning = false;
 let detailLevel = 'all';
 const conversation = document.getElementById('conversation');
 const prompt = document.getElementById('prompt');
+const slashMenu = document.getElementById('slash-menu');
+const slashCommands = [...document.querySelectorAll('.command-row')].map((button) => ({ name: button.dataset.command, description: button.querySelector('span').textContent }));
+let selectedSlashCommand = 0;
 const send = document.getElementById('send');
 const status = document.getElementById('agent-status');
 const editor = document.getElementById('file-editor');
@@ -262,6 +265,44 @@ async function runCommand(command) {
     return;
   }
   if (name === '/exit') ipcRenderer.send('exit-application');
+  else if (!slashCommands.some((entry) => entry.name === name)) showNotice(`未知命令：${name}。输入 /help 查看可用命令。`, true);
+}
+
+function hideSlashMenu() {
+  slashMenu.hidden = true;
+  prompt.setAttribute('aria-expanded', 'false');
+}
+
+function updateSlashMenu() {
+  const value = prompt.value.trim();
+  if (!value.startsWith('/') || /\s/.test(value)) { hideSlashMenu(); return; }
+  const matches = slashCommands.filter((entry) => entry.name.startsWith(value.toLowerCase()));
+  slashMenu.replaceChildren();
+  if (!matches.length) { hideSlashMenu(); return; }
+  selectedSlashCommand = Math.min(selectedSlashCommand, matches.length - 1);
+  matches.forEach((entry, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'slash-option';
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', String(index === selectedSlashCommand));
+    const code = document.createElement('code');
+    code.textContent = entry.name;
+    const description = document.createElement('span');
+    description.textContent = entry.description;
+    button.append(code, description);
+    button.addEventListener('click', () => executeSlashCommand(entry.name));
+    slashMenu.append(button);
+  });
+  slashMenu.hidden = false;
+  prompt.setAttribute('aria-expanded', 'true');
+}
+
+function executeSlashCommand(command) {
+  prompt.value = '';
+  hideSlashMenu();
+  runCommand(command).catch((error) => showNotice(error.message, true));
+  prompt.focus();
 }
 
 async function selectBackground(name) {
@@ -381,12 +422,28 @@ document.getElementById('new-session').addEventListener('click', async () => {
 });
 
 document.querySelectorAll('.suggestion').forEach((button) => button.addEventListener('click', () => { prompt.value = button.textContent; prompt.focus(); }));
+prompt.addEventListener('input', () => { selectedSlashCommand = 0; updateSlashMenu(); });
 prompt.addEventListener('keydown', (event) => {
+  if (!slashMenu.hidden && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+    event.preventDefault();
+    selectedSlashCommand = (selectedSlashCommand + (event.key === 'ArrowDown' ? 1 : -1) + slashMenu.childElementCount) % slashMenu.childElementCount;
+    updateSlashMenu();
+    slashMenu.children[selectedSlashCommand]?.scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  if (event.key === 'Escape' && !slashMenu.hidden) { event.preventDefault(); hideSlashMenu(); return; }
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !slashMenu.hidden) {
+    event.preventDefault();
+    executeSlashCommand(slashMenu.children[selectedSlashCommand].querySelector('code').textContent);
+    return;
+  }
   if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.getElementById('prompt-form').requestSubmit(); }
 });
 document.getElementById('prompt-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (running || !prompt.value.trim()) return;
+  if (!prompt.value.trim()) return;
+  if (prompt.value.trim().startsWith('/')) { executeSlashCommand(prompt.value.trim()); return; }
+  if (running) return;
   running = true;
   send.disabled = true;
   document.getElementById('stop-agent').hidden = false;
