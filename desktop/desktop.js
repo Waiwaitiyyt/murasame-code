@@ -302,6 +302,7 @@ async function initializeAppearance() {
 }
 
 document.getElementById('menu-toggle').addEventListener('click', () => {
+  closeFileMenu();
   appMenu.hidden = !appMenu.hidden;
   document.getElementById('menu-toggle').setAttribute('aria-expanded', String(!appMenu.hidden));
 });
