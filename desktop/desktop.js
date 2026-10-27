@@ -15,6 +15,7 @@ const editor = document.getElementById('file-editor');
 const fileList = document.getElementById('file-list');
 const terminalOutput = document.getElementById('terminal-output');
 const appMenu = document.getElementById('app-menu');
+const fileMenu = document.getElementById('file-menu');
 const configDialog = document.getElementById('agent-config-dialog');
 const choiceDialog = document.getElementById('choice-dialog');
 const providerDefaults = {
@@ -304,11 +305,27 @@ document.getElementById('menu-toggle').addEventListener('click', () => {
   appMenu.hidden = !appMenu.hidden;
   document.getElementById('menu-toggle').setAttribute('aria-expanded', String(!appMenu.hidden));
 });
+function closeFileMenu() {
+  fileMenu.hidden = true;
+  document.getElementById('file-menu-toggle').setAttribute('aria-expanded', 'false');
+}
+document.getElementById('file-menu-toggle').addEventListener('click', () => {
+  closeMenu();
+  fileMenu.hidden = !fileMenu.hidden;
+  document.getElementById('file-menu-toggle').setAttribute('aria-expanded', String(!fileMenu.hidden));
+});
+async function chooseWorkspace() {
+  closeFileMenu();
+  const folder = await ipcRenderer.invoke('choose-workspace');
+  if (folder) { currentDirectory = ''; openFile = null; editor.value = ''; await refreshWorkspace(); }
+}
+document.getElementById('open-folder').addEventListener('click', () => chooseWorkspace().catch((error) => showNotice(error.message, true)));
 appMenu.addEventListener('click', (event) => event.stopPropagation());
 document.addEventListener('click', (event) => {
   if (!appMenu.hidden && !appMenu.contains(event.target) && !document.getElementById('menu-toggle').contains(event.target)) closeMenu();
+  if (!fileMenu.hidden && !document.querySelector('.file-menu-wrap').contains(event.target)) closeFileMenu();
 });
-document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenu(); });
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { closeMenu(); closeFileMenu(); } });
 document.getElementById('theme-toggle').addEventListener('click', async () => {
   const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   applyTheme(theme);
@@ -351,10 +368,7 @@ document.getElementById('agent-config-form').addEventListener('submit', async (e
 });
 
 document.querySelectorAll('.nav-pages .tab').forEach((button) => button.addEventListener('click', () => setPage(button.dataset.page)));
-document.getElementById('workspace').addEventListener('click', async () => {
-  const folder = await ipcRenderer.invoke('choose-workspace');
-  if (folder) { currentDirectory = ''; openFile = null; editor.value = ''; await refreshWorkspace(); }
-});
+document.getElementById('workspace').addEventListener('click', () => chooseWorkspace().catch((error) => showNotice(error.message, true)));
 document.getElementById('pet-mode').addEventListener('click', () => ipcRenderer.send('minimize-to-pet'));
 document.getElementById('tray-mode').addEventListener('click', () => ipcRenderer.send('minimize-to-tray'));
 document.getElementById('new-session').addEventListener('click', async () => {
