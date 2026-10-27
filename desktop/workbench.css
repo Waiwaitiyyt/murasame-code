@@ -46,6 +46,7 @@ main { position: relative; z-index: 1; flex: 1; min-height: 0; display: flex; fl
 }
 .welcome > * { position: relative; z-index: 1; }
 .seal { width: 52px; height: 52px; flex: none; display: grid; place-items: center; border: 1px solid #cddfd3; border-radius: 50%; color: var(--green-strong); font-family: serif; font-size: 25px; background: linear-gradient(145deg, var(--surface-green), var(--surface-lavender)); }
+.seal img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 h1 { margin: 0 0 7px; color: var(--text); font-family: "SimSun", serif; font-size: 21px; font-weight: 600; }
 .welcome p { margin: 0; color: var(--text-muted); font-size: 12px; }
 .conversation { max-width: 900px; width: 100%; flex: 1; overflow: auto; margin: 0 auto; padding: 8px 26px 18px; }

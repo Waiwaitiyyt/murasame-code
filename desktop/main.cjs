@@ -335,6 +335,32 @@ ipcMain.handle('get-background-url', () => {
   config.delete('background');
   return null;
 });
+ipcMain.handle('get-avatar-url', () => {
+  const avatarPath = config.get('avatarPath', null);
+  if (avatarPath && fs.existsSync(avatarPath)) return pathToFileURL(avatarPath).href;
+  if (avatarPath) config.delete('avatarPath');
+  return pathToFileURL(path.join(__dirname, 'assets', 'icon.png')).href;
+});
+ipcMain.handle('upload-avatar', async () => {
+  const result = await dialog.showOpenDialog(appWindow, {
+    properties: ['openFile'],
+    filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const source = result.filePaths[0];
+  const stat = await fs.promises.stat(source);
+  if (stat.size > 10 * 1024 * 1024) throw new Error('头像图片不能超过 10 MB。');
+  const directory = path.join(app.getPath('userData'), 'avatars');
+  await fs.promises.mkdir(directory, { recursive: true });
+  const target = path.join(directory, `avatar-${Date.now()}${path.extname(source).toLowerCase()}`);
+  await fs.promises.copyFile(source, target);
+  config.set('avatarPath', target);
+  return pathToFileURL(target).href;
+});
+ipcMain.handle('reset-avatar', () => {
+  config.delete('avatarPath');
+  return pathToFileURL(path.join(__dirname, 'assets', 'icon.png')).href;
+});
 ipcMain.handle('get-agent-config', async () => {
   const modules = await getAgentModules();
   const current = modules.resolveConfig();

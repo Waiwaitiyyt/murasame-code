@@ -342,6 +342,7 @@ async function initializeAppearance() {
   ]);
   applyBackground(backgroundUrl);
   updateBackgroundSelection(background);
+  document.getElementById('welcome-avatar').src = await ipcRenderer.invoke('get-avatar-url');
 }
 
 document.getElementById('menu-toggle').addEventListener('click', () => {
@@ -385,6 +386,16 @@ document.getElementById('upload-background').addEventListener('click', async () 
     updateBackgroundSelection({ kind: 'uploaded' });
     closeMenu();
   } catch (error) { showNotice(error.message, true); }
+});
+document.getElementById('upload-avatar').addEventListener('click', async () => {
+  try {
+    const url = await ipcRenderer.invoke('upload-avatar');
+    if (url) { document.getElementById('welcome-avatar').src = url; closeMenu(); }
+  } catch (error) { showNotice(error.message, true); }
+});
+document.getElementById('reset-avatar').addEventListener('click', async () => {
+  document.getElementById('welcome-avatar').src = await ipcRenderer.invoke('reset-avatar');
+  closeMenu();
 });
 document.querySelectorAll('.command-row').forEach((button) => button.addEventListener('click', () => {
   runCommand(button.dataset.command).catch((error) => showNotice(error.message, true));
