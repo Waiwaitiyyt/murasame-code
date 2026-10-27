@@ -59,7 +59,6 @@ const markdownPreview = document.getElementById('markdown-preview');
 const fileList = document.getElementById('file-list');
 const terminalOutput = document.getElementById('terminal-output');
 const appMenu = document.getElementById('app-menu');
-const fileMenu = document.getElementById('file-menu');
 const configDialog = document.getElementById('agent-config-dialog');
 const choiceDialog = document.getElementById('choice-dialog');
 const providerDefaults = {
@@ -146,7 +145,6 @@ function setPage(pageId) {
 
 function closeMenu() {
   appMenu.hidden = true;
-  document.getElementById('menu-toggle').setAttribute('aria-expanded', 'false');
 }
 
 function showNotice(message, isError = false) {
@@ -386,27 +384,12 @@ async function initializeAppearance() {
   document.getElementById('welcome-avatar').src = await ipcRenderer.invoke('get-avatar-url');
 }
 
-document.getElementById('menu-toggle').addEventListener('click', () => {
-  closeFileMenu();
-  appMenu.hidden = !appMenu.hidden;
-  document.getElementById('menu-toggle').setAttribute('aria-expanded', String(!appMenu.hidden));
-});
 document.getElementById('ui-language').addEventListener('change', async (event) => {
   uiLanguage = event.target.value;
   await ipcRenderer.invoke('set-desktop-preference', 'uiLanguage', uiLanguage);
   translateWorkbench();
 });
-function closeFileMenu() {
-  fileMenu.hidden = true;
-  document.getElementById('file-menu-toggle').setAttribute('aria-expanded', 'false');
-}
-document.getElementById('file-menu-toggle').addEventListener('click', () => {
-  closeMenu();
-  fileMenu.hidden = !fileMenu.hidden;
-  document.getElementById('file-menu-toggle').setAttribute('aria-expanded', String(!fileMenu.hidden));
-});
 async function chooseWorkspace() {
-  closeFileMenu();
   const folder = await ipcRenderer.invoke('choose-workspace');
   if (folder) {
     currentDirectory = '';
@@ -421,13 +404,16 @@ async function chooseWorkspace() {
     await refreshWorkspace();
   }
 }
-document.getElementById('open-folder').addEventListener('click', () => chooseWorkspace().catch((error) => showNotice(error.message, true)));
+ipcRenderer.on('workbench-menu-action', (_event, action) => {
+  if (action === 'open-folder') chooseWorkspace().catch((error) => showNotice(error.message, true));
+  else if (action === 'open-settings') appMenu.hidden = false;
+  else if (action.startsWith('command:')) runCommand(action.slice(8)).catch((error) => showNotice(error.message, true));
+});
 appMenu.addEventListener('click', (event) => event.stopPropagation());
 document.addEventListener('click', (event) => {
-  if (!appMenu.hidden && !appMenu.contains(event.target) && !document.getElementById('menu-toggle').contains(event.target)) closeMenu();
-  if (!fileMenu.hidden && !document.querySelector('.file-menu-wrap').contains(event.target)) closeFileMenu();
+  if (!appMenu.hidden && !appMenu.contains(event.target)) closeMenu();
 });
-document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { closeMenu(); closeFileMenu(); } });
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenu(); });
 document.getElementById('theme-toggle').addEventListener('click', async () => {
   const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   applyTheme(theme);

@@ -111,19 +111,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .top-actions { gap: 8px; }
 .top-actions button { font-size: 12px; }
 .icon-button { width: 36px; height: 36px; display: inline-grid; place-items: center; padding: 0; font-size: 17px; }
-.menu-toggle { color: var(--purple); }
-.menu-toggle[aria-expanded="true"] { color: var(--green-strong); background: var(--surface-green); }
-.file-menu-wrap { position: relative; }
-.top-menu-button { padding: 7px 11px; border-color: transparent; background: transparent; font-size: 12px; }
-.top-menu-button[aria-expanded="true"] { color: var(--green-strong); background: var(--surface-green); }
-.file-menu { position: absolute; z-index: 51; top: 38px; left: 0; min-width: 170px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); box-shadow: var(--shadow); }
-.file-menu[hidden] { display: none; }
-.file-menu button { width: 100%; border: 0; text-align: left; background: transparent; font-size: 12px; }
 #tray-mode { width: 36px; padding: 5px; font-size: 18px; }
 .app-menu {
   position: absolute;
   z-index: 50;
-  top: 58px;
+  top: 68px;
   left: 16px;
   width: 328px;
   max-height: calc(100vh - 82px);

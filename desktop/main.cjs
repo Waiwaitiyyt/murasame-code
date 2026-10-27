@@ -7,6 +7,7 @@ const { createHash } = require('crypto');
 const Store = require('electron-store');
 const { pathToFileURL } = require('url');
 const { languageNames, detectLanguage, translator } = require('./i18n.cjs');
+const { workbenchTranslate } = require('./workbench-i18n.js');
 
 const store = new Store();
 const isWindows = process.platform === 'win32';
@@ -27,6 +28,37 @@ let agentModules = null;
 let agentRunning = false;
 let currentAgentController = null;
 let terminalProcess = null;
+
+function sendWorkbenchMenuAction(action) {
+  createAppWindow();
+  if (appWindow.webContents.isLoading()) appWindow.webContents.once('did-finish-load', () => appWindow?.webContents.send('workbench-menu-action', action));
+  else appWindow.webContents.send('workbench-menu-action', action);
+}
+
+function refreshWorkbenchMenu() {
+  const language = config.get('uiLanguage', getLanguage());
+  const t = (key) => workbenchTranslate(language, key);
+  const template = [
+    { label: 'File', submenu: [
+      { label: t('打开文件夹…'), accelerator: 'CmdOrCtrl+O', click: () => sendWorkbenchMenuAction('open-folder') },
+      { type: 'separator' },
+      { role: 'close', label: t('关闭窗口') },
+    ] },
+    { label: t('工作台设置'), submenu: [
+      { label: t('打开设置面板…'), click: () => sendWorkbenchMenuAction('open-settings') },
+      { type: 'separator' },
+      ...['/help', '/clear', '/config', '/lang', '/detail', '/model', '/cost', '/compact', '/permission'].map((command) => ({ label: command, click: () => sendWorkbenchMenuAction(`command:${command}`) })),
+    ] },
+    { label: t('编辑'), submenu: [
+      { role: 'undo', label: t('撤销') }, { role: 'redo', label: t('重做') }, { type: 'separator' },
+      { role: 'cut', label: t('剪切') }, { role: 'copy', label: t('复制') }, { role: 'paste', label: t('粘贴') }, { role: 'selectAll', label: t('全选') },
+    ] },
+    { label: t('视图'), submenu: [ { role: 'reload', label: t('重新加载') }, { role: 'toggleDevTools', label: t('开发者工具') } ] },
+    { label: t('窗口'), submenu: [ { role: 'minimize', label: t('最小化') }, { role: 'close', label: t('关闭窗口') } ] },
+  ];
+  if (isMac) template.unshift({ label: app.name, submenu: [ { role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' } ] });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 function createAppWindow() {
   if (appWindow) { appWindow.show(); appWindow.focus(); return; }
@@ -146,6 +178,7 @@ function getLanguage() {
 function changeLanguage(lang) {
   store.set('language', lang);
   refreshTray();
+  if (!config.has('uiLanguage')) refreshWorkbenchMenu();
 }
 
 function buildMenu() {
@@ -295,7 +328,7 @@ ipcMain.handle('get-desktop-preferences', () => ({
 ipcMain.handle('set-desktop-preference', (_event, key, value) => {
   if (key === 'theme' && ['light', 'dark'].includes(value)) config.set(key, value);
   if (key === 'detailLevel' && ['off', 'command', 'threeLines', 'all'].includes(value)) config.set(key, value);
-  if (key === 'uiLanguage' && ['zh', 'en', 'ja'].includes(value)) config.set(key, value);
+  if (key === 'uiLanguage' && ['zh', 'en', 'ja'].includes(value)) { config.set(key, value); refreshWorkbenchMenu(); }
   return true;
 });
 ipcMain.handle('set-background', (_event, name) => {
@@ -403,6 +436,7 @@ ipcMain.handle('set-agent-language', async (_event, language) => {
   modules.setLanguage(language);
   store.set('language', language);
   refreshTray();
+  if (!config.has('uiLanguage')) refreshWorkbenchMenu();
   return language;
 });
 ipcMain.handle('reset-permissions', async () => {
@@ -573,6 +607,7 @@ ipcMain.on('exit-application', () => app.quit());
 // ---- 应用生命周期 ----
 
 app.whenReady().then(() => {
+  refreshWorkbenchMenu();
   createWindow();
   setupTray();
   if (!process.argv.includes('--pet-only')) createAppWindow();
