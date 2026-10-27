@@ -39,7 +39,7 @@ function refreshWorkbenchMenu() {
   const language = config.get('uiLanguage', getLanguage());
   const t = (key) => workbenchTranslate(language, key);
   const template = [
-    { label: 'File', submenu: [
+    { label: t('文件菜单'), submenu: [
       { label: t('打开文件夹…'), accelerator: 'CmdOrCtrl+O', click: () => sendWorkbenchMenuAction('open-folder') },
       { type: 'separator' },
       { role: 'close', label: t('关闭窗口') },

@@ -1,6 +1,8 @@
 // Workbench UI translations. Chinese text is the stable lookup key.
 const workbenchTranslations = {
+  zh: { '文件菜单': '文件' },
   en: {
+    '文件菜单': 'File',
     '打开设置面板…': 'Open Settings…', '关闭窗口': 'Close Window', '编辑': 'Edit', '撤销': 'Undo', '重做': 'Redo', '剪切': 'Cut', '复制': 'Copy', '粘贴': 'Paste', '全选': 'Select All', '视图': 'View', '重新加载': 'Reload', '开发者工具': 'Developer Tools', '窗口': 'Window', '最小化': 'Minimize',
     '路径超出当前工作目录。': 'Path is outside the current workspace.', '不支持这张内置背景图。': 'This built-in background is not supported.', '背景图片不能超过 20 MB。': 'Background image must be 20 MB or smaller.', '头像图片不能超过 10 MB。': 'Avatar image must be 10 MB or smaller.', '接口类型无效。': 'Invalid provider.', '模型名称无效。': 'Invalid model name.', 'Base URL 格式无效。': 'Invalid Base URL.', 'Base URL 仅支持 HTTP 或 HTTPS。': 'Base URL must use HTTP or HTTPS.', '权限模式无效。': 'Invalid permission mode.', '语言选项无效。': 'Invalid language.',
     '只能打开文件。': 'Only files can be opened.', '文件超过 1 MB，暂不支持在编辑器中打开。': 'Files over 1 MB cannot be opened in the editor.', '这是二进制文件，不能作为文本编辑。': 'This binary file cannot be edited as text.', '只能保存文件。': 'Only files can be saved.', '文件超过 1 MB，暂不支持在编辑器中保存。': 'Files over 1 MB cannot be saved in the editor.', '丛雨正在处理上一项任务。': 'Murasame is still working on the previous task.', '请输入要完成的任务。': 'Enter a task first.', '还没有配置模型接口，请先在终端运行 murasame --configure。': 'No model API is configured. Run murasame --configure in the terminal first.', '当前没有可压缩的较早对话。': 'There are no earlier messages to compact.', '请输入终端命令。': 'Enter a terminal command.', '上一条终端命令仍在运行。': 'The previous terminal command is still running.',
@@ -27,6 +29,7 @@ const workbenchTranslations = {
     '切换模型名称…': 'Change model…', '打开完整模型设置': 'Open model settings', '输入模型名称': 'Enter model name', '自动': 'Automatic', '手动': 'Manual', '完全访问': 'Full Access', '危险操作会请求确认': 'Ask before risky operations', '每次工具调用都请求确认': 'Ask before every tool call', '不弹出工具确认': 'Never ask for tool confirmation', '清除已记住的授权': 'Clear remembered permissions',
   },
   ja: {
+    '文件菜单': 'ファイル',
     '打开设置面板…': '設定を開く…', '关闭窗口': 'ウィンドウを閉じる', '编辑': '編集', '撤销': '元に戻す', '重做': 'やり直す', '剪切': '切り取り', '复制': 'コピー', '粘贴': '貼り付け', '全选': 'すべて選択', '视图': '表示', '重新加载': '再読み込み', '开发者工具': '開発者ツール', '窗口': 'ウィンドウ', '最小化': '最小化',
     '路径超出当前工作目录。': 'パスが現在の作業フォルダーの外にあります。', '不支持这张内置背景图。': 'この内蔵背景は使用できません。', '背景图片不能超过 20 MB。': '背景画像は 20 MB 以下にしてください。', '头像图片不能超过 10 MB。': 'アイコン画像は 10 MB 以下にしてください。', '接口类型无效。': 'プロバイダーが無効です。', '模型名称无效。': 'モデル名が無効です。', 'Base URL 格式无效。': 'Base URL の形式が無効です。', 'Base URL 仅支持 HTTP 或 HTTPS。': 'Base URL は HTTP または HTTPS のみ対応しています。', '权限模式无效。': '権限モードが無効です。', '语言选项无效。': '言語が無効です。',
     '只能打开文件。': 'ファイルのみ開けます。', '文件超过 1 MB，暂不支持在编辑器中打开。': '1 MB を超えるファイルはエディターで開けません。', '这是二进制文件，不能作为文本编辑。': 'バイナリーファイルはテキストとして編集できません。', '只能保存文件。': 'ファイルのみ保存できます。', '文件超过 1 MB，暂不支持在编辑器中保存。': '1 MB を超えるファイルはエディターで保存できません。', '丛雨正在处理上一项任务。': 'ムラサメは前の作業を処理中です。', '请输入要完成的任务。': '依頼を入力してください。', '还没有配置模型接口，请先在终端运行 murasame --configure。': 'モデル API が未設定です。ターミナルで murasame --configure を実行してください。', '当前没有可压缩的较早对话。': '圧縮できる以前の会話がありません。', '请输入终端命令。': 'ターミナルコマンドを入力してください。', '上一条终端命令仍在运行。': '前のターミナルコマンドがまだ実行中です。',
