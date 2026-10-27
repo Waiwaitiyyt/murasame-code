@@ -362,7 +362,18 @@ document.getElementById('file-menu-toggle').addEventListener('click', () => {
 async function chooseWorkspace() {
   closeFileMenu();
   const folder = await ipcRenderer.invoke('choose-workspace');
-  if (folder) { currentDirectory = ''; openFile = null; editor.value = ''; setMarkdownPreview(false); markdownToggle.hidden = true; await refreshWorkspace(); }
+  if (folder) {
+    currentDirectory = '';
+    openFile = null;
+    savedContents = '';
+    editor.value = '';
+    document.getElementById('editor-path').textContent = '选择文件以查看';
+    document.getElementById('save-file').disabled = true;
+    document.getElementById('save-status').textContent = '';
+    setMarkdownPreview(false);
+    markdownToggle.hidden = true;
+    await refreshWorkspace();
+  }
 }
 document.getElementById('open-folder').addEventListener('click', () => chooseWorkspace().catch((error) => showNotice(error.message, true)));
 appMenu.addEventListener('click', (event) => event.stopPropagation());
