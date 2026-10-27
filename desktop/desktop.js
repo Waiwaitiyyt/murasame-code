@@ -7,6 +7,45 @@ let openFile = null;
 let savedContents = '';
 let terminalRunning = false;
 let detailLevel = 'all';
+let uiLanguage = 'zh';
+const originalUiText = new WeakMap();
+const originalUiAttributes = new WeakMap();
+const t = (key) => window.workbenchTranslate(uiLanguage, key);
+function translateWorkbench() {
+  document.documentElement.lang = { zh: 'zh-CN', en: 'en', ja: 'ja' }[uiLanguage];
+  document.title = t('丛雨代码工作台');
+  const staticRoots = ['.topbar', '.workbench-nav', '.welcome', '.composer', '.file-sidebar', '.editor-panel > .panel-heading', '#file-editor', '.terminal-heading', '#terminal-form', '.app-dialog'];
+  for (const selector of staticRoots) {
+    document.querySelectorAll(selector).forEach((root) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (node.parentElement?.closest('#editor-path, #save-status, #agent-status, #theme-label, #markdown-toggle, #slash-menu')) continue;
+        if (!originalUiText.has(node)) originalUiText.set(node, node.textContent);
+        const original = originalUiText.get(node);
+        const trimmed = original.trim();
+        if (trimmed) node.textContent = original.replace(trimmed, t(trimmed));
+      }
+      [root, ...root.querySelectorAll('*')].forEach((element) => {
+        if (!originalUiAttributes.has(element)) originalUiAttributes.set(element, { title: element.getAttribute('title'), placeholder: element.getAttribute('placeholder'), alt: element.getAttribute('alt'), 'aria-label': element.getAttribute('aria-label') });
+        for (const [name, value] of Object.entries(originalUiAttributes.get(element))) if (value) element.setAttribute(name, t(value));
+      });
+    });
+  }
+  const hint = conversation.querySelector('.hint');
+  if (hint) {
+    hint.firstChild.textContent = t('试试：');
+    hint.querySelectorAll('.suggestion').forEach((button, index) => { button.textContent = t(['阅读项目结构并总结', '检查当前项目中的问题'][index]); });
+  }
+  if (!terminalOutput.dataset.used) terminalOutput.textContent = t('在当前工作目录执行命令。命令由你主动提交。');
+  applyTheme(document.documentElement.dataset.theme);
+  setMarkdownPreview(!markdownPreview.hidden);
+  if (!openFile) document.getElementById('editor-path').textContent = t('选择文件以查看');
+  if (!running) status.textContent = t('由 murasame-code 提供 · 请检查 AI 生成的修改');
+  if (editor.value !== savedContents) document.getElementById('save-status').textContent = t('未保存');
+  document.getElementById('ui-language').value = uiLanguage;
+  updateSlashMenu();
+}
 const conversation = document.getElementById('conversation');
 const prompt = document.getElementById('prompt');
 const slashMenu = document.getElementById('slash-menu');
@@ -64,7 +103,7 @@ function renderSession(messages) {
       addToolEvent(`${message.name}\n${message.content}`);
     } else if (message.type === 'action') {
       if (message.content) appendBubble('assistant', message.content);
-      for (const tool of message.tools) addToolEvent(`调用 ${tool.name}\n${JSON.stringify(tool.input, null, 2)}`);
+      for (const tool of message.tools) addToolEvent(`${t('调用')} ${tool.name}\n${JSON.stringify(tool.input, null, 2)}`);
     } else if (message.content) {
       appendBubble(message.role === 'user' ? 'user' : 'assistant', message.content);
     }
@@ -72,11 +111,11 @@ function renderSession(messages) {
   if (!messages.length) {
     const hint = document.createElement('div');
     hint.className = 'hint';
-    hint.append(document.createTextNode('试试：'));
+    hint.append(document.createTextNode(t('试试：')));
     for (const text of ['阅读项目结构并总结', '检查当前项目中的问题']) {
       const button = document.createElement('button');
       button.className = 'suggestion';
-      button.textContent = text;
+      button.textContent = t(text);
       button.addEventListener('click', () => { prompt.value = text; prompt.focus(); });
       hint.append(button);
     }
@@ -111,7 +150,7 @@ function closeMenu() {
 }
 
 function showNotice(message, isError = false) {
-  const bubble = appendBubble('assistant', message);
+  const bubble = appendBubble('assistant', t(message));
   if (isError) bubble.classList.add('error');
   return bubble;
 }
@@ -153,7 +192,7 @@ async function openConfigDialog() {
     document.getElementById('config-model').value = current.model;
     const key = document.getElementById('config-api-key');
     key.value = '';
-    key.placeholder = current.apiKeyConfigured ? '留空则保留已保存的 Key' : '请输入 API Key';
+    key.placeholder = t(current.apiKeyConfigured ? '留空则保留已保存的 Key' : '请输入 API Key');
     configDialog.showModal();
   } catch (error) { showNotice(error.message, true); }
 }
@@ -161,7 +200,7 @@ async function openConfigDialog() {
 async function updateAgentConfig(patch) {
   try {
     const updated = await ipcRenderer.invoke('save-agent-config', patch);
-    showNotice(`模型设置已保存：${updated.provider} / ${updated.model}`);
+    showNotice(`${t('模型设置已保存：')}${updated.provider} / ${updated.model}`);
     return updated;
   } catch (error) {
     showNotice(error.message, true);
@@ -185,50 +224,50 @@ async function runCommand(command) {
       '/compact    压缩较早的对话记录',
       '/permission 设置工具权限模式；可清除已记住的授权',
       '/exit       退出应用',
-    ].join('\n'));
+    ].map(t).join('\n'));
     return;
   }
   if (name === '/clear') {
-    if (running) { showNotice('任务运行期间不能清空会话。', true); return; }
+    if (running) { showNotice(t('任务运行期间不能清空会话。'), true); return; }
     await ipcRenderer.invoke('clear-session');
     renderSession([]);
-    showNotice('当前会话已清空。');
+    showNotice(t('当前会话已清空。'));
     return;
   }
   if (name === '/config') { await openConfigDialog(); return; }
   if (name === '/lang') {
-    const language = await choose('选择回复语言', [
+    const language = await choose(t('选择回复语言'), [
       { label: '简体中文', description: 'zh', value: 'zh' },
       { label: 'English', description: 'en', value: 'en' },
       { label: '日本語', description: 'ja', value: 'ja' },
     ]);
     if (!language) return;
     await ipcRenderer.invoke('set-agent-language', language);
-    showNotice(`丛雨的回复语言已切换为 ${language}。`);
+    showNotice(`${t('丛雨的回复语言已切换为 ')}${language}。`);
     return;
   }
   if (name === '/detail') {
-    const level = await choose('工具输出详细程度', [
-      { label: '关闭', description: '只显示工具名称', value: 'off' },
-      { label: '命令', description: '显示工具名称与目标', value: 'command' },
-      { label: '简要', description: '显示结果前三行', value: 'threeLines' },
-      { label: '完整', description: '显示完整工具输出', value: 'all' },
+    const level = await choose(t('工具输出详细程度'), [
+      { label: t('关闭'), description: t('只显示工具名称'), value: 'off' },
+      { label: t('命令'), description: t('显示工具名称与目标'), value: 'command' },
+      { label: t('简要'), description: t('显示结果前三行'), value: 'threeLines' },
+      { label: t('完整'), description: t('显示完整工具输出'), value: 'all' },
     ]);
     if (!level) return;
     detailLevel = level;
     await ipcRenderer.invoke('set-desktop-preference', 'detailLevel', level);
-    showNotice(`工具输出详细程度已设为：${level}。`);
+    showNotice(`${t('工具输出详细程度已设为：')}${level}。`);
     return;
   }
   if (name === '/model') {
     const current = await ipcRenderer.invoke('get-agent-config');
-    const action = await choose(`当前模型：${current.model}`, [
-      { label: '切换模型名称…', value: 'change' },
-      { label: '打开完整模型设置', value: 'config' },
+    const action = await choose(`${t('当前模型：')}${current.model}`, [
+      { label: t('切换模型名称…'), value: 'change' },
+      { label: t('打开完整模型设置'), value: 'config' },
     ]);
     if (action === 'config') { await openConfigDialog(); return; }
     if (action !== 'change') return;
-    const model = window.prompt('输入模型名称', current.model);
+    const model = window.prompt(t('输入模型名称'), current.model);
     if (!model?.trim()) return;
     await updateAgentConfig({ ...current, model: model.trim(), apiKey: '' });
     return;
@@ -236,38 +275,38 @@ async function runCommand(command) {
   if (name === '/cost') {
     const usage = await ipcRenderer.invoke('get-usage');
     showNotice(usage.input + usage.output > 0
-      ? `当前会话 Token 用量\n输入：${usage.input.toLocaleString()}\n输出：${usage.output.toLocaleString()}\n合计：${(usage.input + usage.output).toLocaleString()}`
-      : '当前会话还没有 Token 用量记录。');
+      ? `${t('当前会话 Token 用量')}\n${t('输入：')}${usage.input.toLocaleString()}\n${t('输出：')}${usage.output.toLocaleString()}\n${t('合计：')}${(usage.input + usage.output).toLocaleString()}`
+      : t('当前会话还没有 Token 用量记录。'));
     return;
   }
   if (name === '/compact') {
-    if (running) { showNotice('请等当前任务完成后再压缩会话。', true); return; }
-    status.textContent = '正在压缩会话…';
+    if (running) { showNotice(t('请等当前任务完成后再压缩会话。'), true); return; }
+    status.textContent = t('正在压缩会话…');
     const result = await ipcRenderer.invoke('compact-session');
     if (result.error) showNotice(result.error, true);
-    else { await refreshSession(); showNotice('较早的对话已压缩为摘要。'); }
-    status.textContent = '由 murasame-code 提供 · 请检查 AI 生成的修改';
+    else { await refreshSession(); showNotice(t('较早的对话已压缩为摘要。')); }
+    status.textContent = t('由 murasame-code 提供 · 请检查 AI 生成的修改');
     return;
   }
   if (name === '/permission') {
-    const mode = await choose('工具权限模式', [
-      { label: '自动', description: '危险操作会请求确认', value: 'auto' },
-      { label: '手动', description: '每次工具调用都请求确认', value: 'manual' },
-      { label: '完全访问', description: '不弹出工具确认', value: 'full-access' },
-      { label: '清除已记住的授权', value: 'reset' },
+    const mode = await choose(t('工具权限模式'), [
+      { label: t('自动'), description: t('危险操作会请求确认'), value: 'auto' },
+      { label: t('手动'), description: t('每次工具调用都请求确认'), value: 'manual' },
+      { label: t('完全访问'), description: t('不弹出工具确认'), value: 'full-access' },
+      { label: t('清除已记住的授权'), value: 'reset' },
     ]);
     if (!mode) return;
     if (mode === 'reset') {
       await ipcRenderer.invoke('reset-permissions');
-      showNotice('已清除记住的工具授权。');
+      showNotice(t('已清除记住的工具授权。'));
     } else {
       await ipcRenderer.invoke('set-permission-mode', mode);
-      showNotice(`工具权限模式已切换为：${mode}。`);
+      showNotice(`${t('工具权限模式已切换为：')}${mode}。`);
     }
     return;
   }
   if (name === '/exit') ipcRenderer.send('exit-application');
-  else if (!slashCommands.some((entry) => entry.name === name)) showNotice(`未知命令：${name}。输入 /help 查看可用命令。`, true);
+  else if (!slashCommands.some((entry) => entry.name === name)) showNotice(`${t('未知命令：')}${name}${t('。输入 /help 查看可用命令。')}`, true);
 }
 
 function hideSlashMenu() {
@@ -291,7 +330,7 @@ function updateSlashMenu() {
     const code = document.createElement('code');
     code.textContent = entry.name;
     const description = document.createElement('span');
-    description.textContent = entry.description;
+    description.textContent = t(entry.description);
     button.append(code, description);
     button.addEventListener('click', () => executeSlashCommand(entry.name));
     slashMenu.append(button);
@@ -330,11 +369,13 @@ function updateBackgroundSelection(background) {
 function applyTheme(theme) {
   const next = theme === 'dark' ? 'dark' : 'light';
   document.documentElement.dataset.theme = next;
-  document.getElementById('theme-label').textContent = next === 'dark' ? '深色' : '浅色';
+  document.getElementById('theme-label').textContent = t(next === 'dark' ? '深色' : '浅色');
 }
 
 async function initializeAppearance() {
   const preferences = await ipcRenderer.invoke('get-desktop-preferences');
+  uiLanguage = preferences.uiLanguage || 'zh';
+  translateWorkbench();
   detailLevel = preferences.detailLevel || 'all';
   applyTheme(preferences.theme);
   const [background, backgroundUrl] = await Promise.all([
@@ -349,6 +390,11 @@ document.getElementById('menu-toggle').addEventListener('click', () => {
   closeFileMenu();
   appMenu.hidden = !appMenu.hidden;
   document.getElementById('menu-toggle').setAttribute('aria-expanded', String(!appMenu.hidden));
+});
+document.getElementById('ui-language').addEventListener('change', async (event) => {
+  uiLanguage = event.target.value;
+  await ipcRenderer.invoke('set-desktop-preference', 'uiLanguage', uiLanguage);
+  translateWorkbench();
 });
 function closeFileMenu() {
   fileMenu.hidden = true;
@@ -367,7 +413,7 @@ async function chooseWorkspace() {
     openFile = null;
     savedContents = '';
     editor.value = '';
-    document.getElementById('editor-path').textContent = '选择文件以查看';
+    document.getElementById('editor-path').textContent = t('选择文件以查看');
     document.getElementById('save-file').disabled = true;
     document.getElementById('save-status').textContent = '';
     setMarkdownPreview(false);
@@ -429,7 +475,7 @@ document.getElementById('agent-config-form').addEventListener('submit', async (e
     const result = await ipcRenderer.invoke('save-agent-config', patch);
     document.getElementById('config-api-key').value = '';
     configDialog.close();
-    showNotice(`模型设置已保存：${result.provider} / ${result.model}`);
+    showNotice(`${t('模型设置已保存：')}${result.provider} / ${result.model}`);
   } catch (error) { showNotice(error.message, true); }
 });
 
@@ -471,32 +517,32 @@ document.getElementById('prompt-form').addEventListener('submit', async (event) 
   running = true;
   send.disabled = true;
   document.getElementById('stop-agent').hidden = false;
-  status.textContent = '丛雨正在处理…';
+  status.textContent = t('丛雨正在处理…');
   currentAnswer = null;
   const task = prompt.value.trim();
   prompt.value = '';
   appendBubble('user', task);
-  currentAnswer = appendBubble('assistant', '丛雨正在思考…');
+  currentAnswer = appendBubble('assistant', t('丛雨正在思考…'));
   try {
     const result = await ipcRenderer.invoke('run-murasame', task);
     if (result.error) {
-      if (currentAnswer.dataset.rawMarkdown === '丛雨正在思考…') updateAssistantMarkdown(currentAnswer, result.error);
+      if (currentAnswer.dataset.rawMarkdown === t('丛雨正在思考…')) updateAssistantMarkdown(currentAnswer, t(result.error));
       currentAnswer.classList.add('error');
     }
   } catch (error) {
-    updateAssistantMarkdown(currentAnswer, error.message);
+    updateAssistantMarkdown(currentAnswer, t(error.message));
     currentAnswer.classList.add('error');
   }
 });
 document.getElementById('stop-agent').addEventListener('click', () => ipcRenderer.send('stop-agent'));
 ipcRenderer.on('agent-event', (_event, data) => {
   if (data.type === 'text') {
-    if (currentAnswer?.dataset.rawMarkdown === '丛雨正在思考…') updateAssistantMarkdown(currentAnswer, '');
+    if (currentAnswer?.dataset.rawMarkdown === t('丛雨正在思考…')) updateAssistantMarkdown(currentAnswer, '');
     if (currentAnswer) updateAssistantMarkdown(currentAnswer, `${currentAnswer.dataset.rawMarkdown ?? ''}${data.delta}`);
     conversation.scrollTop = conversation.scrollHeight;
   } else if (data.type === 'action') {
-    addToolEvent(`行动：${data.title}`);
-    currentAnswer = appendBubble('assistant', '丛雨正在思考…');
+    addToolEvent(`${t('行动：')}${data.title}`);
+    currentAnswer = appendBubble('assistant', t('丛雨正在思考…'));
   } else if (data.type === 'tool') {
     if (detailLevel !== 'off') {
       const summary = `${data.ok ? '✓' : '✕'} ${data.name}${data.target ? ` · ${data.target}` : ''}`;
@@ -507,7 +553,7 @@ ipcRenderer.on('agent-event', (_event, data) => {
     running = false;
     send.disabled = false;
     document.getElementById('stop-agent').hidden = true;
-    status.textContent = '由 murasame-code 提供 · 请检查 AI 生成的修改';
+    status.textContent = t('由 murasame-code 提供 · 请检查 AI 生成的修改');
     refreshFiles();
   }
 });
@@ -518,7 +564,7 @@ async function refreshFiles() {
   breadcrumb.hidden = !currentDirectory;
   if (currentDirectory) {
     const crumb = document.createElement('button');
-    crumb.textContent = `项目 / ${currentDirectory}`;
+    crumb.textContent = `${t('项目')} / ${currentDirectory}`;
     crumb.addEventListener('click', () => { currentDirectory = ''; refreshFiles(); });
     breadcrumb.append(crumb);
   }
@@ -543,7 +589,7 @@ async function refreshFiles() {
       });
       fileList.append(button);
     }
-    if (!entries.length) fileList.innerHTML = '<div class="file-empty">此目录为空</div>';
+    if (!entries.length) fileList.innerHTML = `<div class="file-empty">${t('此目录为空')}</div>`;
   } catch (error) {
     const message = document.createElement('div');
     message.className = 'file-empty';
@@ -563,31 +609,32 @@ async function loadFile(filePath) {
     document.getElementById('editor-path').textContent = file.path;
     document.getElementById('save-file').disabled = false;
     document.getElementById('save-status').textContent = '';
-  } catch (error) { window.alert(error.message); }
+  } catch (error) { window.alert(t(error.message)); }
 }
 function setMarkdownPreview(enabled) {
   if (enabled) window.renderMurasameMarkdown(markdownPreview, editor.value);
   markdownPreview.hidden = !enabled;
   editor.hidden = enabled;
-  markdownToggle.textContent = enabled ? '查看源码' : '渲染预览';
+  markdownToggle.textContent = t(enabled ? '查看源码' : '渲染预览');
   markdownToggle.setAttribute('aria-pressed', String(enabled));
 }
 markdownToggle.addEventListener('click', () => setMarkdownPreview(markdownPreview.hidden));
 editor.addEventListener('input', () => {
-  document.getElementById('save-status').textContent = editor.value === savedContents ? '' : '未保存';
+  document.getElementById('save-status').textContent = editor.value === savedContents ? '' : t('未保存');
 });
 document.getElementById('save-file').addEventListener('click', async () => {
   if (!openFile) return;
   try {
     await ipcRenderer.invoke('save-workspace-file', openFile, editor.value);
     savedContents = editor.value;
-    document.getElementById('save-status').textContent = '已保存';
-    setTimeout(() => { if (document.getElementById('save-status').textContent === '已保存') document.getElementById('save-status').textContent = ''; }, 1600);
-  } catch (error) { window.alert(error.message); }
+    document.getElementById('save-status').textContent = t('已保存');
+    setTimeout(() => { if (document.getElementById('save-status').textContent === t('已保存')) document.getElementById('save-status').textContent = ''; }, 1600);
+  } catch (error) { window.alert(t(error.message)); }
 });
 document.getElementById('refresh-files').addEventListener('click', refreshFiles);
 
 function appendTerminal(text) {
+  terminalOutput.dataset.used = 'true';
   terminalOutput.textContent += text;
   terminalOutput.scrollTop = terminalOutput.scrollHeight;
 }

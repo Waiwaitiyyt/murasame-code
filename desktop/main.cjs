@@ -288,12 +288,14 @@ ipcMain.handle('choose-workspace', async () => {
 ipcMain.handle('get-workspace', () => config.get('workspace', os.homedir()));
 ipcMain.handle('get-desktop-preferences', () => ({
   theme: config.get('theme', 'light'),
+  uiLanguage: config.get('uiLanguage', getLanguage()),
   detailLevel: config.get('detailLevel', 'all'),
   background: config.get('background', null),
 }));
 ipcMain.handle('set-desktop-preference', (_event, key, value) => {
   if (key === 'theme' && ['light', 'dark'].includes(value)) config.set(key, value);
   if (key === 'detailLevel' && ['off', 'command', 'threeLines', 'all'].includes(value)) config.set(key, value);
+  if (key === 'uiLanguage' && ['zh', 'en', 'ja'].includes(value)) config.set(key, value);
   return true;
 });
 ipcMain.handle('set-background', (_event, name) => {
