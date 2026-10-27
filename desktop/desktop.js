@@ -15,6 +15,8 @@ let selectedSlashCommand = 0;
 const send = document.getElementById('send');
 const status = document.getElementById('agent-status');
 const editor = document.getElementById('file-editor');
+const markdownToggle = document.getElementById('markdown-toggle');
+const markdownPreview = document.getElementById('markdown-preview');
 const fileList = document.getElementById('file-list');
 const terminalOutput = document.getElementById('terminal-output');
 const appMenu = document.getElementById('app-menu');
@@ -359,7 +361,7 @@ document.getElementById('file-menu-toggle').addEventListener('click', () => {
 async function chooseWorkspace() {
   closeFileMenu();
   const folder = await ipcRenderer.invoke('choose-workspace');
-  if (folder) { currentDirectory = ''; openFile = null; editor.value = ''; await refreshWorkspace(); }
+  if (folder) { currentDirectory = ''; openFile = null; editor.value = ''; setMarkdownPreview(false); markdownToggle.hidden = true; await refreshWorkspace(); }
 }
 document.getElementById('open-folder').addEventListener('click', () => chooseWorkspace().catch((error) => showNotice(error.message, true)));
 appMenu.addEventListener('click', (event) => event.stopPropagation());
@@ -531,11 +533,21 @@ async function loadFile(filePath) {
     openFile = file.path;
     savedContents = file.content;
     editor.value = file.content;
+    setMarkdownPreview(false);
+    markdownToggle.hidden = !/\.md(?:own)?$/i.test(file.path);
     document.getElementById('editor-path').textContent = file.path;
     document.getElementById('save-file').disabled = false;
     document.getElementById('save-status').textContent = '';
   } catch (error) { window.alert(error.message); }
 }
+function setMarkdownPreview(enabled) {
+  if (enabled) window.renderMurasameMarkdown(markdownPreview, editor.value);
+  markdownPreview.hidden = !enabled;
+  editor.hidden = enabled;
+  markdownToggle.textContent = enabled ? '查看源码' : '渲染预览';
+  markdownToggle.setAttribute('aria-pressed', String(enabled));
+}
+markdownToggle.addEventListener('click', () => setMarkdownPreview(markdownPreview.hidden));
 editor.addEventListener('input', () => {
   document.getElementById('save-status').textContent = editor.value === savedContents ? '' : '未保存';
 });

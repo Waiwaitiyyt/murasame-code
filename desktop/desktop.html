@@ -59,7 +59,7 @@
     </section>
     <section id="files" class="page workbench-page">
       <aside class="file-sidebar"><div class="panel-heading"><b>项目文件</b><button id="refresh-files" title="刷新">↻</button></div><div id="file-breadcrumb"></div><div id="file-list"></div></aside>
-      <div class="editor-panel"><div class="panel-heading"><span id="editor-path">选择文件以查看</span><div><span id="save-status"></span><button id="save-file" disabled>保存</button></div></div><textarea id="file-editor" spellcheck="false" placeholder="从左侧选择文本文件"></textarea></div>
+      <div class="editor-panel"><div class="panel-heading"><span id="editor-path">选择文件以查看</span><div><button id="markdown-toggle" type="button" hidden aria-pressed="false">渲染预览</button><span id="save-status"></span><button id="save-file" disabled>保存</button></div></div><textarea id="file-editor" spellcheck="false" placeholder="从左侧选择文本文件"></textarea><div id="markdown-preview" class="markdown-preview" hidden></div></div>
     </section>
     <section id="terminal" class="page terminal-page">
       <div class="terminal-heading"><div><b>工作区终端</b><span id="terminal-cwd"></span></div><button id="clear-terminal">清屏</button></div>
