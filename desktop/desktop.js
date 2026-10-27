@@ -8,25 +8,27 @@ let savedContents = '';
 let terminalRunning = false;
 let detailLevel = 'all';
 let uiLanguage = 'zh';
+let fileRefreshToken = 0;
 const originalUiText = new WeakMap();
 const originalUiAttributes = new WeakMap();
 const t = (key) => window.workbenchTranslate(uiLanguage, key);
 function translateWorkbench() {
   document.documentElement.lang = { zh: 'zh-CN', en: 'en', ja: 'ja' }[uiLanguage];
   document.title = t('丛雨code工作台');
-  const staticRoots = ['.topbar', '.workbench-nav', '.welcome', '.composer', '.file-sidebar', '.editor-panel > .panel-heading', '#file-editor', '.terminal-heading', '#terminal-form', '.app-dialog'];
+  const staticRoots = ['.topbar', '#app-menu', '.workbench-nav', '.welcome', '.composer', '.file-sidebar', '.editor-panel > .panel-heading', '#file-editor', '.terminal-heading', '#terminal-form', '.app-dialog'];
   for (const selector of staticRoots) {
     document.querySelectorAll(selector).forEach((root) => {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
       while (walker.nextNode()) {
         const node = walker.currentNode;
-        if (node.parentElement?.closest('#editor-path, #save-status, #agent-status, #theme-label, #markdown-toggle, #slash-menu')) continue;
+        if (node.parentElement?.closest('#editor-path, #save-status, #agent-status, #theme-label, #markdown-toggle, #slash-menu, #workspace-path')) continue;
         if (!originalUiText.has(node)) originalUiText.set(node, node.textContent);
         const original = originalUiText.get(node);
         const trimmed = original.trim();
         if (trimmed) node.textContent = original.replace(trimmed, t(trimmed));
       }
       [root, ...root.querySelectorAll('*')].forEach((element) => {
+        if (element.id === 'workspace') return;
         if (!originalUiAttributes.has(element)) originalUiAttributes.set(element, { title: element.getAttribute('title'), placeholder: element.getAttribute('placeholder'), alt: element.getAttribute('alt'), 'aria-label': element.getAttribute('aria-label') });
         for (const [name, value] of Object.entries(originalUiAttributes.get(element))) if (value) element.setAttribute(name, t(value));
       });
@@ -44,7 +46,20 @@ function translateWorkbench() {
   if (!running) status.textContent = t('由 murasame-code 提供 · 请检查 AI 生成的修改');
   if (editor.value !== savedContents) document.getElementById('save-status').textContent = t('未保存');
   document.getElementById('ui-language').value = uiLanguage;
+  syncNavAccessibility();
   updateSlashMenu();
+}
+function syncNavAccessibility() {
+  const labels = { agent: '对话', files: '文件', terminal: '终端' };
+  document.querySelectorAll('.nav-pages .tab').forEach((button) => {
+    const label = t(labels[button.dataset.page]);
+    button.setAttribute('aria-label', label);
+    button.title = label;
+  });
+  const settingsButton = document.getElementById('studio-settings');
+  settingsButton.setAttribute('aria-label', t('工作台设置'));
+  settingsButton.title = t('工作台设置');
+  document.getElementById('workspace').setAttribute('aria-label', `${t('工作目录')}: ${document.getElementById('workspace-path').textContent}`);
 }
 const conversation = document.getElementById('conversation');
 const prompt = document.getElementById('prompt');
@@ -115,7 +130,7 @@ function renderSession(messages) {
       const button = document.createElement('button');
       button.className = 'suggestion';
       button.textContent = t(text);
-      button.addEventListener('click', () => { prompt.value = text; prompt.focus(); });
+      button.addEventListener('click', () => { prompt.value = button.textContent; prompt.focus(); });
       hint.append(button);
     }
     conversation.append(hint);
@@ -125,9 +140,11 @@ function renderSession(messages) {
 async function refreshWorkspace() {
   const folder = await ipcRenderer.invoke('get-workspace');
   const workspace = document.getElementById('workspace');
-  workspace.textContent = folder;
+  document.getElementById('workspace-path').textContent = folder;
   workspace.title = folder;
+  syncNavAccessibility();
   document.getElementById('terminal-cwd').textContent = folder;
+  document.getElementById('terminal-cwd').title = folder;
   await refreshSession();
   await refreshFiles();
 }
@@ -139,12 +156,26 @@ async function refreshSession() {
 
 function setPage(pageId) {
   document.querySelectorAll('.page').forEach((page) => page.classList.toggle('active', page.id === pageId));
-  document.querySelectorAll('.nav-pages .tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.page === pageId));
+  document.querySelectorAll('.nav-pages .tab').forEach((tab) => {
+    const active = tab.dataset.page === pageId;
+    tab.classList.toggle('active', active);
+    if (active) tab.setAttribute('aria-current', 'page');
+    else tab.removeAttribute('aria-current');
+  });
   if (pageId === 'files') refreshFiles();
 }
 
-function closeMenu() {
+function closeMenu(returnFocus = false) {
+  if (appMenu.hidden) return;
   appMenu.hidden = true;
+  document.getElementById('studio-settings').setAttribute('aria-expanded', 'false');
+  if (returnFocus) document.getElementById('studio-settings').focus();
+}
+
+function openMenu() {
+  appMenu.hidden = false;
+  document.getElementById('studio-settings').setAttribute('aria-expanded', 'true');
+  document.getElementById('theme-toggle').focus();
 }
 
 function showNotice(message, isError = false) {
@@ -397,23 +428,29 @@ async function chooseWorkspace() {
     savedContents = '';
     editor.value = '';
     document.getElementById('editor-path').textContent = t('选择文件以查看');
+    document.getElementById('editor-path').removeAttribute('title');
     document.getElementById('save-file').disabled = true;
     document.getElementById('save-status').textContent = '';
     setMarkdownPreview(false);
     markdownToggle.hidden = true;
+    updateFileSelection();
     await refreshWorkspace();
   }
 }
 ipcRenderer.on('workbench-menu-action', (_event, action) => {
   if (action === 'open-folder') chooseWorkspace().catch((error) => showNotice(error.message, true));
-  else if (action === 'open-settings') appMenu.hidden = false;
+  else if (action === 'open-settings') openMenu();
   else if (action.startsWith('command:')) runCommand(action.slice(8)).catch((error) => showNotice(error.message, true));
 });
 appMenu.addEventListener('click', (event) => event.stopPropagation());
-document.addEventListener('click', (event) => {
-  if (!appMenu.hidden && !appMenu.contains(event.target)) closeMenu();
+document.getElementById('studio-settings').addEventListener('click', () => {
+  if (appMenu.hidden) openMenu();
+  else closeMenu(true);
 });
-document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenu(); });
+document.addEventListener('click', (event) => {
+  if (!appMenu.hidden && !appMenu.contains(event.target) && !document.getElementById('studio-settings').contains(event.target)) closeMenu();
+});
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !appMenu.hidden) { event.preventDefault(); closeMenu(true); } });
 document.getElementById('theme-toggle').addEventListener('click', async () => {
   const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   applyTheme(theme);
@@ -545,6 +582,7 @@ ipcRenderer.on('agent-event', (_event, data) => {
 });
 
 async function refreshFiles() {
+  const refreshToken = ++fileRefreshToken;
   const breadcrumb = document.getElementById('file-breadcrumb');
   breadcrumb.replaceChildren();
   breadcrumb.hidden = !currentDirectory;
@@ -557,6 +595,7 @@ async function refreshFiles() {
   fileList.replaceChildren();
   try {
     const entries = await ipcRenderer.invoke('list-workspace-files', currentDirectory);
+    if (refreshToken !== fileRefreshToken) return;
     if (currentDirectory) {
       const up = document.createElement('button');
       up.className = 'file-entry directory';
@@ -567,6 +606,7 @@ async function refreshFiles() {
     for (const entry of entries) {
       const button = document.createElement('button');
       button.className = `file-entry ${entry.directory ? 'directory' : ''}`;
+      button.dataset.path = entry.path;
       button.textContent = `${entry.directory ? '▸' : '·'}  ${entry.name}`;
       button.title = entry.path;
       button.addEventListener('click', () => {
@@ -575,8 +615,10 @@ async function refreshFiles() {
       });
       fileList.append(button);
     }
+    updateFileSelection();
     if (!entries.length) fileList.innerHTML = `<div class="file-empty">${t('此目录为空')}</div>`;
   } catch (error) {
+    if (refreshToken !== fileRefreshToken) return;
     const message = document.createElement('div');
     message.className = 'file-empty';
     message.textContent = error.message;
@@ -584,15 +626,26 @@ async function refreshFiles() {
   }
 }
 
+function updateFileSelection() {
+  fileList.querySelectorAll('.file-entry[data-path]').forEach((button) => {
+    const selected = Boolean(openFile && button.dataset.path === openFile && !button.classList.contains('directory'));
+    button.classList.toggle('selected', selected);
+    if (selected) button.setAttribute('aria-current', 'true');
+    else button.removeAttribute('aria-current');
+  });
+}
+
 async function loadFile(filePath) {
   try {
     const file = await ipcRenderer.invoke('read-workspace-file', filePath);
     openFile = file.path;
+    updateFileSelection();
     savedContents = file.content;
     editor.value = file.content;
     setMarkdownPreview(false);
     markdownToggle.hidden = !/\.md(?:own)?$/i.test(file.path);
     document.getElementById('editor-path').textContent = file.path;
+    document.getElementById('editor-path').title = file.path;
     document.getElementById('save-file').disabled = false;
     document.getElementById('save-status').textContent = '';
   } catch (error) { window.alert(t(error.message)); }

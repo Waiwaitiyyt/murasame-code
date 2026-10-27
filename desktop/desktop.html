@@ -6,14 +6,23 @@
   <title>丛雨code工作台</title>
   <link rel="stylesheet" href="desktop.css">
   <link rel="stylesheet" href="workbench.css">
+  <link rel="stylesheet" href="studio.css">
 </head>
 <body>
+  <svg class="icon-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-chat" viewBox="0 0 24 24"><path d="M4 5.5h16v11H9l-5 3v-14Z"/><path d="M8 10h8M8 13h5"/></symbol>
+    <symbol id="icon-files" viewBox="0 0 24 24"><path d="M3.5 6h7l2 2h8v10.5h-17z"/><path d="M3.5 6V4.5h6"/></symbol>
+    <symbol id="icon-terminal" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="m7 9 3 3-3 3m5 0h5"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M10 2.8h4l.6 2.1 2 1.1 2.1-.6 2 3.4-1.6 1.6v2.3l1.6 1.6-2 3.4-2.1-.6-2 1.1-.6 2.1h-4l-.6-2.1-2-1.1-2.1.6-2-3.4 1.6-1.6v-2.3L3.3 8.8l2-3.4 2.1.6 2-1.1z"/></symbol>
+    <symbol id="icon-folder" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v10H3z"/></symbol>
+  </svg>
   <header class="topbar">
     <div class="brand-group">
-      <div class="brand"><img src="assets/icon.png"><div><b>丛雨code</b><small>千恋＊万花 · Murasame Code</small></div></div>
+      <div class="brand"><img src="assets/icon.png" alt="" aria-hidden="true"><div><b>丛雨code <span class="studio-wordmark">STUDIO</span></b><small>千恋＊万花 · Murasame Code</small></div></div>
     </div>
     <div class="top-actions"><button id="new-session">新建会话</button><button id="pet-mode">收进桌宠</button><button id="tray-mode" title="隐藏到托盘">—</button></div>
-    <aside id="app-menu" class="app-menu" role="dialog" aria-label="工作台设置" hidden>
+  </header>
+  <aside id="app-menu" class="app-menu" role="dialog" aria-label="工作台设置" hidden>
       <div class="menu-title">工作台设置</div>
       <button id="theme-toggle" class="menu-row"><span>外观模式</span><span id="theme-label">浅色</span></button>
       <label class="menu-language">界面语言 / Language<select id="ui-language"><option value="zh">简体中文</option><option value="en">English</option><option value="ja">日本語</option></select></label>
@@ -40,19 +49,19 @@
         <button class="command-row" data-command="/permission"><code>/permission</code><span>工具权限模式</span></button>
         <button class="command-row command-exit" data-command="/exit"><code>/exit</code><span>退出应用</span></button>
       </div>
-    </aside>
-  </header>
+  </aside>
   <nav class="workbench-nav">
     <div class="nav-pages">
-      <button class="tab active" data-page="agent">对话</button>
-      <button class="tab" data-page="files">文件</button>
-      <button class="tab" data-page="terminal">终端</button>
+      <button class="tab active" data-page="agent" aria-current="page" title="对话"><svg class="nav-icon" aria-hidden="true"><use href="#icon-chat"></use></svg><span class="nav-label">对话</span></button>
+      <button class="tab" data-page="files" title="文件"><svg class="nav-icon" aria-hidden="true"><use href="#icon-files"></use></svg><span class="nav-label">文件</span></button>
+      <button class="tab" data-page="terminal" title="终端"><svg class="nav-icon" aria-hidden="true"><use href="#icon-terminal"></use></svg><span class="nav-label">终端</span></button>
     </div>
-    <span class="workspace-label">工作目录</span><button id="workspace">选择目录</button>
+    <div class="nav-workspace"><span class="workspace-label">工作目录</span><button id="workspace" title="选择目录"><svg class="nav-icon" aria-hidden="true"><use href="#icon-folder"></use></svg><span id="workspace-path">选择目录</span></button></div>
+    <div class="nav-footer"><span class="nav-lore" aria-hidden="true">✿ <span>千恋＊万花</span></span><button id="studio-settings" type="button" aria-controls="app-menu" aria-expanded="false" title="工作台设置"><svg class="nav-icon" aria-hidden="true"><use href="#icon-settings"></use></svg><span class="nav-label">工作台设置</span></button></div>
   </nav>
   <main>
     <section id="agent" class="page active">
-      <div class="welcome"><div class="seal"><img id="welcome-avatar" src="assets/icon.png" alt="丛雨头像"></div><div><h1>汝の願い、聞き届けよう。</h1><p>丛雨会在选定的工作目录里阅读和修改项目。</p></div></div>
+      <div class="welcome"><div class="seal"><img id="welcome-avatar" src="assets/icon.png" alt="丛雨头像"></div><div class="welcome-copy"><span class="welcome-kicker">MURASAME / WORKSPACE</span><h1>汝の願い、聞き届けよう。</h1><p>丛雨会在选定的工作目录里阅读和修改项目。</p></div><span class="welcome-flower" aria-hidden="true">✿</span></div>
       <div id="conversation" class="conversation"><div class="hint">试试：<button class="suggestion">阅读项目结构并总结</button><button class="suggestion">检查当前项目中的问题</button></div></div>
       <form id="prompt-form" class="composer"><div id="slash-menu" class="slash-menu" role="listbox" aria-label="会话命令" hidden></div><textarea id="prompt" rows="3" placeholder="描述任务，或输入 / 使用命令…（Enter 发送，Shift+Enter 换行）" aria-controls="slash-menu" aria-expanded="false"></textarea><div class="composer-footer"><span id="agent-status">由 murasame-code 提供 · 请检查 AI 生成的修改</span><div><button id="stop-agent" type="button" hidden>停止</button><button id="send" type="submit">交给丛雨 ↗</button></div></div></form>
     </section>

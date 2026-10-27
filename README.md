@@ -171,4 +171,4 @@ Windows 安装包：`npm run build:win`。Linux AppImage：`npm run build:linux`
 工作台按会话、工作区、Agent 与宿主拆分，实现思路参考 DeepSeek Harness 的插件化架构和持久会话设计；当前复用 murasame-code 的 Agent、模型适配器与工具执行器，没有将 DeepSeek Harness 源码或运行时作为依赖。
 
 
-Electron 原生菜单栏提供 File → 打开文件夹，以及工作台设置 → 打开设置面板。设置面板提供浅色/深色模式、中英日界面语言、内置背景、自定义背景及对话头像上传；会话命令也可通过 `/` 输入。内置背景取自 `murasame-img/pic01.jpg`、`pic02.jpg` 与 `pic03.jpg`，用户上传的图片复制到应用数据目录并保留为当前背景。
+Electron 原生菜单栏提供“文件”→“打开文件夹”，以及“工作台设置”→“打开设置面板”。工作台左侧可切换对话、文件和终端，并显示当前工作目录；底部的设置按钮也能打开设置面板。设置面板提供浅色/深色模式、中英日界面语言、内置背景、自定义背景及对话头像上传；会话命令也可通过 `/` 输入。文件区支持 Markdown 源码与预览切换。内置背景取自 `murasame-img/pic01.jpg`、`pic02.jpg` 与 `pic03.jpg`，用户上传的图片复制到应用数据目录并保留为当前背景。
