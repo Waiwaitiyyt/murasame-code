@@ -77,11 +77,24 @@ function createAppWindow() {
 async function getAgentModules() {
   if (agentModules) return agentModules;
   const load = (file) => import(pathToFileURL(path.join(codeRoot, 'dist', file)).href);
-  const [configModule, llmModule, agentModule, permissionsModule, i18nModule] = await Promise.all([
-    load('config.js'), load('llm.js'), load('agent.js'), load('permissions.js'), load('i18n.js'),
+  const [configModule, llmModule, agentModule, permissionsModule, i18nModule, sessionModule] = await Promise.all([
+    load('config.js'), load('llm.js'), load('agent.js'), load('permissions.js'), load('i18n.js'), load('session.js'),
   ]);
-  agentModules = { ...configModule, ...llmModule, ...agentModule, ...permissionsModule, ...i18nModule };
+  agentModules = { ...configModule, ...llmModule, ...agentModule, ...permissionsModule, ...i18nModule, ...sessionModule };
   return agentModules;
+}
+
+function getWorkspaceConversation(modules, cwd) {
+  const file = modules.sessionFilePath(cwd);
+  if (fs.existsSync(file)) return modules.loadSession(cwd);
+  const legacy = sessions.get(sessionKey(cwd), null);
+  if (legacy) {
+    const conversation = [modules.newConversation(cwd)[0], ...legacy.filter((message) => message.role !== 'system')];
+    modules.saveSession(cwd, conversation);
+    sessions.delete(sessionKey(cwd));
+    return conversation;
+  }
+  return modules.newConversation(cwd);
 }
 
 function sessionKey(cwd) {
@@ -313,6 +326,7 @@ ipcMain.on('show-context-menu', () => {
 });
 
 ipcMain.handle('choose-workspace', async () => {
+  if (agentRunning) throw new Error('请等当前任务完成后再切换工作目录。');
   const result = await dialog.showOpenDialog(appWindow, { properties: ['openDirectory', 'createDirectory'] });
   if (result.canceled || !result.filePaths[0]) return null;
   config.set('workspace', result.filePaths[0]);
@@ -448,8 +462,11 @@ ipcMain.handle('get-usage', () => {
   const cwd = config.get('workspace', os.homedir());
   return sessions.get(`usage:${sessionKey(cwd)}`, { input: 0, output: 0 });
 });
-ipcMain.handle('clear-session', (_event) => {
+ipcMain.handle('clear-session', async () => {
+  if (agentRunning) throw new Error('请等当前任务完成后再清空会话。');
   const cwd = config.get('workspace', os.homedir());
+  const modules = await getAgentModules();
+  modules.clearSession(cwd);
   sessions.delete(sessionKey(cwd));
   sessions.delete(`usage:${sessionKey(cwd)}`);
   return true;
@@ -475,7 +492,7 @@ ipcMain.handle('save-workspace-file', async (_event, relativePath, content) => {
 ipcMain.handle('get-session', async () => {
   const cwd = config.get('workspace', os.homedir());
   const modules = await getAgentModules();
-  const conversation = sessions.get(sessionKey(cwd), null) || modules.newConversation(cwd);
+  const conversation = getWorkspaceConversation(modules, cwd);
   return conversation.filter((message) => message.role !== 'system').map((message) => {
     if (message.role === 'tool') return { type: 'tool', name: message.name, content: message.content };
     if (message.role === 'assistant' && message.toolCalls.length) {
@@ -485,9 +502,11 @@ ipcMain.handle('get-session', async () => {
   });
 });
 ipcMain.handle('new-session', async () => {
+  if (agentRunning) throw new Error('请等当前任务完成后再新建会话。');
   const cwd = config.get('workspace', os.homedir());
-  const { newConversation } = await getAgentModules();
-  sessions.set(sessionKey(cwd), newConversation(cwd));
+  const modules = await getAgentModules();
+  modules.clearSession(cwd);
+  sessions.delete(sessionKey(cwd));
   sessions.delete(`usage:${sessionKey(cwd)}`);
   return true;
 });
@@ -498,13 +517,14 @@ ipcMain.handle('run-murasame', async (_event, prompt) => {
   const key = sessionKey(cwd);
   let conversation;
   let abortController;
+  let modules;
   agentRunning = true;
   try {
-    const modules = await getAgentModules();
+    modules = await getAgentModules();
     const cfg = modules.resolveConfig();
     modules.setLanguage(cfg.language);
     if (!cfg.apiKey) return { error: '还没有配置模型接口，请先在终端运行 murasame --configure。' };
-    conversation = sessions.get(key, null) || modules.newConversation(cwd);
+    conversation = getWorkspaceConversation(modules, cwd);
     abortController = new AbortController();
     currentAgentController = abortController;
     const permissionManager = new modules.PermissionManager(
@@ -516,6 +536,7 @@ ipcMain.handle('run-murasame', async (_event, prompt) => {
     await modules.runTurn(
       modules.createClient(cfg), conversation, prompt,
       {
+        onConversationChange: () => modules.saveSession(cwd, conversation),
         onTextDelta: (delta) => appWindow?.webContents.send('agent-event', { type: 'text', delta }),
         onActionTitle: (title) => appWindow?.webContents.send('agent-event', { type: 'action', title }),
         onUsage: (input, output) => {
@@ -527,7 +548,6 @@ ipcMain.handle('run-murasame', async (_event, prompt) => {
         },
         onToolResult: (call, ok, result) => {
           appWindow?.webContents.send('agent-event', { type: 'tool', name: call.name, target: modules.toolTarget(call, cwd), ok, result });
-          sessions.set(key, conversation);
         },
         confirmTool: async (call) => {
           const detail = `${call.name}\n${JSON.stringify(call.input, null, 2)}`;
@@ -545,10 +565,12 @@ ipcMain.handle('run-murasame', async (_event, prompt) => {
       cwd,
       permissionManager,
     );
-    sessions.set(key, conversation);
+    modules.saveSession(cwd, conversation);
     return { ok: true };
   } catch (error) {
-    if (conversation) sessions.set(key, conversation);
+    if (conversation && modules) {
+      try { modules.saveSession(cwd, conversation); } catch { /* preserve the original error */ }
+    }
     return { error: error.message || String(error) };
   } finally {
     agentRunning = false;
@@ -563,11 +585,11 @@ ipcMain.handle('compact-session', async () => {
   const modules = await getAgentModules();
   const cfg = modules.resolveConfig();
   modules.setLanguage(cfg.language);
-  const conversation = sessions.get(key, null) || modules.newConversation(cwd);
+  const conversation = getWorkspaceConversation(modules, cwd);
   if (conversation.length <= 1) return { error: '当前没有可压缩的较早对话。' };
   try {
     const result = await modules.compactConversation(modules.createClient(cfg), conversation, new AbortController().signal);
-    sessions.set(key, conversation);
+    modules.saveSession(cwd, conversation);
     if (result.usage) {
       const usageKey = `usage:${key}`;
       const usage = sessions.get(usageKey, { input: 0, output: 0 });

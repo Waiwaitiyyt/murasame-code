@@ -6,6 +6,8 @@ import { buildSystemPrompt } from './prompt.js';
 import { t } from './i18n.js';
 
 export interface AgentHooks {
+  /** 对话发生变化时持久化；包括工具结果和中断后的补全。 */
+  onConversationChange?: () => void;
   /** 一次模型调用完成，seconds 为本次思考耗时 */
   onThinking?: (seconds: number) => void;
   /** 模型在调用工具前输出的行动标题（一句话意图） */
@@ -132,6 +134,7 @@ export async function runTurn(
 ): Promise<string> {
   trimConversation(conversation);
   conversation.push({ role: 'user', content: userText });
+  hooks.onConversationChange?.();
 
   try {
     for (let i = 0; i < MAX_ITERATIONS; i++) {
@@ -151,6 +154,7 @@ export async function runTurn(
 
       if (toolCalls.length === 0) {
         conversation.push({ role: 'assistant', content: text, toolCalls: [] });
+        hooks.onConversationChange?.();
         if (text) hooks.onText?.(text);
         return text;
       }
@@ -159,6 +163,7 @@ export async function runTurn(
 
       // 记录本次 assistant 消息（含工具调用）
       conversation.push({ role: 'assistant', content: text, toolCalls });
+      hooks.onConversationChange?.();
 
       for (const call of toolCalls) {
         if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -184,11 +189,13 @@ export async function runTurn(
         }
         hooks.onToolResult?.(call, ok, result);
         conversation.push({ role: 'tool', toolCallId: call.id, name: call.name, content: result });
+        hooks.onConversationChange?.();
       }
     }
 
     const maxed = t('agent.maxIterations');
     conversation.push({ role: 'assistant', content: maxed, toolCalls: [] });
+    hooks.onConversationChange?.();
     hooks.onText?.(maxed);
     return maxed;
   } catch (error) {
@@ -213,6 +220,7 @@ export async function runTurn(
         }
       }
     }
+    hooks.onConversationChange?.();
     throw error;
   }
 }

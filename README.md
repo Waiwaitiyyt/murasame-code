@@ -166,7 +166,7 @@ npm link              # 注册 murasame 终端命令
 
 Windows 安装包：`npm run build:win`。Linux AppImage：`npm run build:linux`。需要 Node.js ≥ 18.18。第一次使用前用 `murasame --configure` 配置模型接口。桌面端和 CLI 共用 `~/.murasame/config.json`。
 
-桌面端内置基础工作台，不依赖外置 Harness 项目：可浏览和编辑工作区文本文件、运行工作区终端命令、使用持久化会话与丛雨 Agent 对话。模型与 CLI 共用 `~/.murasame/config.json`；工具权限沿用 CLI 设置，需要确认的操作会弹出授权窗口。会话记录保存在 Electron 用户数据目录中。桌宠素材也随本项目打包，不需要单独的 murasame-pet 仓库。
+桌面端内置基础工作台，不依赖外置 Harness 项目：可浏览和编辑工作区文本文件、运行工作区终端命令、使用持久化会话与丛雨 Agent 对话。模型与 CLI 共用 `~/.murasame/config.json`；工具权限沿用 CLI 设置，需要确认的操作会弹出授权窗口。CLI 与桌面端的对话记录共用 `~/.murasame/sessions/`，按工作目录分别保存，重新打开同一目录即可继续对话。桌面端旧版会话会在首次打开对应目录时自动迁移；CLI 的 `/clear` 和桌面端的「新建会话」会清除当前目录的对话。桌宠素材也随本项目打包，不需要单独的 murasame-pet 仓库。
 
 工作台按会话、工作区、Agent 与宿主拆分，实现思路参考 DeepSeek Harness 的插件化架构和持久会话设计；当前复用 murasame-code 的 Agent、模型适配器与工具执行器，没有将 DeepSeek Harness 源码或运行时作为依赖。
 

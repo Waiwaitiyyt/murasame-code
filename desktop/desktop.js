@@ -507,11 +507,13 @@ document.getElementById('workspace').addEventListener('click', () => chooseWorks
 document.getElementById('pet-mode').addEventListener('click', () => ipcRenderer.send('minimize-to-pet'));
 document.getElementById('tray-mode').addEventListener('click', () => ipcRenderer.send('minimize-to-tray'));
 document.getElementById('new-session').addEventListener('click', async () => {
-  await ipcRenderer.invoke('new-session');
-  currentAnswer = null;
-  await refreshSession();
-  setPage('agent');
-  prompt.focus();
+  try {
+    await ipcRenderer.invoke('new-session');
+    currentAnswer = null;
+    await refreshSession();
+    setPage('agent');
+    prompt.focus();
+  } catch (error) { showNotice(error.message, true); }
 });
 
 document.querySelectorAll('.suggestion').forEach((button) => button.addEventListener('click', () => { prompt.value = button.textContent; prompt.focus(); }));

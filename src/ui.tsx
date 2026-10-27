@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { render, Box, Static, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { createClient, type LLMClient, type ToolCall } from './llm.js';
@@ -20,6 +20,7 @@ import { theme, buildBanner, formatCwd } from './theme.js';
 import { pickLine } from './persona.js';
 import { setLanguage, getLanguage, t, LANGUAGES, isLanguage, type Language } from './i18n.js';
 import { describeError } from './errors.js';
+import { clearSession, loadSession, saveSession } from './session.js';
 
 type Item =
   | { kind: 'banner' }
@@ -65,13 +66,21 @@ function App({ client, config, cwd, columns, screenVersion, clearScreen }: {
   screenVersion: number;
   clearScreen: () => void;
 }) {
-  const convRef = useRef<Conversation>(newConversation(cwd));
+  const initialConversation = useMemo(() => loadSession(cwd), [cwd]);
+  const convRef = useRef<Conversation>(initialConversation);
   const clientRef = useRef<LLMClient>(client);
   const permissionRef = useRef(new PermissionManager(config.permissionMode, config.approvedActions, writeConfigFile, cwd));
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(config.permissionMode);
   const [cfg, setCfg] = useState<Config>(config);
   const [mode, setMode] = useState<PromptMode>({ kind: 'chat' });
-  const [items, setItems] = useState<Item[]>([{ kind: 'banner' }]);
+  const [items, setItems] = useState<Item[]>(() => [
+    { kind: 'banner' },
+    ...convRef.current.slice(1).flatMap((message): Item[] => {
+      if (message.role === 'user') return [{ kind: 'user', text: message.content }];
+      if (message.role === 'assistant') return message.content ? [{ kind: 'assistant', text: message.content }] : [];
+      return [];
+    }),
+  ]);
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState('');
   const inputHistory = useRef<string[]>([]);
@@ -150,7 +159,8 @@ function App({ client, config, cwd, columns, screenVersion, clearScreen }: {
     writeConfigFile({ language: lang });
     setGreet(pickLine('greet'));
     redrawTranscript();
-    convRef.current = newConversation(cwd);
+    convRef.current[0] = newConversation(cwd)[0];
+    saveSession(cwd, convRef.current);
     push({ kind: 'status', level: 'info', text: t('ui.langSwitched', { lang: t(`langNames.${lang}`) }) });
     setMode({ kind: 'chat' });
   }
@@ -398,6 +408,7 @@ function App({ client, config, cwd, columns, screenVersion, clearScreen }: {
         convRef.current,
         q,
         {
+          onConversationChange: () => saveSession(cwd, convRef.current),
           onThinking: (seconds) =>
             push({ kind: 'thinking', seconds: Math.max(1, Math.round(seconds)) }),
           onTextDelta: (delta) => setStreamText((prev) => prev + delta),
@@ -462,6 +473,7 @@ function App({ client, config, cwd, columns, screenVersion, clearScreen }: {
         setItems([{ kind: 'banner' }]);
         redrawTranscript();
         convRef.current = newConversation(cwd);
+        clearSession(cwd);
         setUsage({ input: 0, output: 0 });
         break;
       case '/help':
@@ -539,6 +551,7 @@ function App({ client, config, cwd, columns, screenVersion, clearScreen }: {
     abortRef.current = controller;
     try {
       const { usage: compactUsage } = await compactConversation(clientRef.current, convRef.current, controller.signal);
+      saveSession(cwd, convRef.current);
       if (compactUsage) {
         setUsage((prev) => ({
           input: prev.input + compactUsage.inputTokens,
