@@ -515,10 +515,13 @@ ipcRenderer.on('agent-event', (_event, data) => {
 async function refreshFiles() {
   const breadcrumb = document.getElementById('file-breadcrumb');
   breadcrumb.replaceChildren();
-  const crumb = document.createElement('button');
-  crumb.textContent = currentDirectory ? `项目 / ${currentDirectory}` : '项目根目录';
-  crumb.addEventListener('click', () => { currentDirectory = ''; refreshFiles(); });
-  breadcrumb.append(crumb);
+  breadcrumb.hidden = !currentDirectory;
+  if (currentDirectory) {
+    const crumb = document.createElement('button');
+    crumb.textContent = `项目 / ${currentDirectory}`;
+    crumb.addEventListener('click', () => { currentDirectory = ''; refreshFiles(); });
+    breadcrumb.append(crumb);
+  }
   fileList.replaceChildren();
   try {
     const entries = await ipcRenderer.invoke('list-workspace-files', currentDirectory);
