@@ -13,7 +13,7 @@ const originalUiAttributes = new WeakMap();
 const t = (key) => window.workbenchTranslate(uiLanguage, key);
 function translateWorkbench() {
   document.documentElement.lang = { zh: 'zh-CN', en: 'en', ja: 'ja' }[uiLanguage];
-  document.title = t('丛雨代码工作台');
+  document.title = t('丛雨code工作台');
   const staticRoots = ['.topbar', '.workbench-nav', '.welcome', '.composer', '.file-sidebar', '.editor-panel > .panel-heading', '#file-editor', '.terminal-heading', '#terminal-form', '.app-dialog'];
   for (const selector of staticRoots) {
     document.querySelectorAll(selector).forEach((root) => {

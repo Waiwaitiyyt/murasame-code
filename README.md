@@ -1,4 +1,4 @@
-# 丛雨代码 · murasame
+# 丛雨code · murasame
 
 本项目采用 [GNU General Public License v3.0](LICENSE) 许可证。
 

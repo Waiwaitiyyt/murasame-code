@@ -1,7 +1,7 @@
 {
   "name": "murasame-code",
   "version": "0.1.0",
-  "description": "丛雨代码 —— 桌面端 AI 编程代理与千恋＊万花丛雨桌宠",
+  "description": "丛雨code —— 桌面端 AI 编程代理与千恋＊万花丛雨桌宠",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Waiwaitiyyt/murasame-code.git"
@@ -71,7 +71,7 @@
   "main": "desktop/main.cjs",
   "build": {
     "appId": "com.murasame.desktop",
-    "productName": "丛雨代码",
+    "productName": "丛雨code",
     "files": [
       "bin/**/*",
       "dist/**/*",
@@ -101,7 +101,7 @@
       "installerHeaderIcon": "desktop/assets/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "丛雨代码",
+      "shortcutName": "丛雨code",
       "runAfterFinish": true,
       "displayLanguageSelector": true,
       "installerLanguages": [

@@ -64,7 +64,7 @@ function createAppWindow() {
   if (appWindow) { appWindow.show(); appWindow.focus(); return; }
   appWindow = new BrowserWindow({
     width: 1180, height: 800, minWidth: 780, minHeight: 560,
-    title: '丛雨代码', backgroundColor: '#f7f3fa',
+    title: '丛雨code', backgroundColor: '#f7f3fa',
     webPreferences: { nodeIntegration: true, contextIsolation: false },
   });
   appWindow.loadFile(path.join(__dirname, 'desktop.html'));
@@ -201,7 +201,7 @@ function buildMenu() {
         else createWindow();
       },
     },
-    { label: '打开丛雨代码', click: () => createAppWindow() },
+    { label: '打开丛雨code', click: () => createAppWindow() },
     { type: 'separator' },
     {
       label: t('costume'),

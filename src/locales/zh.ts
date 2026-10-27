@@ -1,7 +1,7 @@
 import type { LocaleMessages } from '../i18n-types.js';
 
 export const zh: LocaleMessages = {
-  help: `丛雨代码 · murasame —— 千恋＊万花 丛雨主题的终端编程 Agent（类 Claude Code）
+  help: `丛雨code · murasame —— 千恋＊万花 丛雨主题的终端编程 Agent（类 Claude Code）
 
 用法：
   murasame                启动交互式对话（REPL）
@@ -70,7 +70,7 @@ export const zh: LocaleMessages = {
   },
 
   config: {
-    title: '— 丛雨代码 · 初始配置 —',
+    title: '— 丛雨code · 初始配置 —',
     chooseVendor: '请选择 API 厂商：',
     inputIndex: '输入序号: ',
     invalidIndex: '无效序号，请重新输入。',
