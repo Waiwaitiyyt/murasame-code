@@ -7,6 +7,9 @@ const { createHash } = require('crypto');
 const { randomUUID } = require('crypto');
 const Store = require('electron-store');
 const { pathToFileURL } = require('url');
+const XLSX = require('xlsx');
+const mammoth = require('mammoth');
+const { Document, Packer, Paragraph } = require('docx');
 const { languageNames, detectLanguage, translator } = require('./i18n.cjs');
 const { workbenchTranslate } = require('./workbench-i18n.cjs');
 
@@ -30,6 +33,8 @@ let agentRunning = false;
 let currentAgentController = null;
 let terminalProcess = null;
 let lastAgentChanges = { cwd: null, files: new Map() };
+const officeWorkbooks = new Map();
+const officeBaselines = new Map();
 
 async function snapshotWorkspace(root) {
   const files = new Map(); let totalBytes = 0;
@@ -388,11 +393,13 @@ ipcMain.handle('get-desktop-preferences', () => ({
   uiLanguage: config.get('uiLanguage', getLanguage()),
   detailLevel: config.get('detailLevel', 'all'),
   background: config.get('background', null),
+  codeOpacity: config.get('codeOpacity', 0.82),
 }));
 ipcMain.handle('set-desktop-preference', (_event, key, value) => {
   if (key === 'theme' && ['light', 'dark'].includes(value)) config.set(key, value);
   if (key === 'detailLevel' && ['off', 'command', 'threeLines', 'all'].includes(value)) config.set(key, value);
   if (key === 'uiLanguage' && ['zh', 'en', 'ja'].includes(value)) { config.set(key, value); refreshWorkbenchMenu(); }
+  if (key === 'codeOpacity' && Number.isFinite(value) && value >= 0.2 && value <= 1) config.set(key, value);
   return true;
 });
 ipcMain.handle('set-background', (_event, name) => {
@@ -586,6 +593,81 @@ ipcMain.handle('read-workspace-pdf', async (_event, relativePath) => {
   try { await handle.read(header, 0, header.length, 0); } finally { await handle.close(); }
   if (!header.includes(Buffer.from('%PDF-'))) throw new Error('文件内容不是有效的 PDF。');
   return { path: relativePath, url: pathToFileURL(target).href };
+});
+ipcMain.handle('read-workspace-office', async (_event, relativePath) => {
+  const extension = path.extname(String(relativePath)).toLowerCase();
+  if (!['.docx', '.xlsx', '.csv', '.tsv'].includes(extension)) throw new Error('暂不支持这种文档格式。');
+  const { target } = await verifyWorkspacePath(relativePath);
+  const stat = await fs.promises.stat(target);
+  if (!stat.isFile()) throw new Error('只能打开文件。');
+  if (stat.size > 25 * 1024 * 1024) throw new Error('文件超过 25 MB，暂不支持编辑。');
+  const buffer = await fs.promises.readFile(target);
+  const hash = createHash('sha256').update(buffer).digest('hex');
+  officeWorkbooks.clear(); officeBaselines.clear();
+  if (extension === '.docx') {
+    const result = await mammoth.extractRawText({ buffer });
+    return { kind: 'docx', path: relativePath, content: result.value, hash };
+  }
+  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: false });
+  const sheets = workbook.SheetNames.map((name) => {
+    const sheet = workbook.Sheets[name];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+    const rowTruncated = rows.length > 10000;
+    const columnTruncated = rows.some((row) => row.length > 200);
+    return { name, rows: rows.slice(0, 10000).map((row) => row.slice(0, 200)), rowTruncated, columnTruncated, truncated: rowTruncated || columnTruncated };
+  });
+  officeWorkbooks.set(target, workbook);
+  officeBaselines.set(target, new Map(sheets.map((sheet) => [sheet.name, sheet.rows.map((row) => row.slice())])));
+  return { kind: 'spreadsheet', path: relativePath, format: extension.slice(1), sheets, hash };
+});
+ipcMain.handle('save-workspace-office', async (_event, relativePath, document, expectedHash) => {
+  const { target } = await verifyWorkspacePath(relativePath);
+  const current = await fs.promises.readFile(target);
+  const currentHash = createHash('sha256').update(current).digest('hex');
+  if (currentHash !== expectedHash) throw new Error('文件已在其他位置发生变化，请重新载入后再保存。');
+  const extension = path.extname(target).toLowerCase();
+  let output;
+  if (extension === '.docx') {
+    const paragraphs = String(document.content || '').replace(/\r\n?/g, '\n').split('\n').map((text) => new Paragraph({ text }));
+    output = await Packer.toBuffer(new Document({ sections: [{ children: paragraphs }] }));
+    await fs.promises.writeFile(target, output);
+  } else {
+    const workbook = officeWorkbooks.get(target) || XLSX.read(current, { type: 'buffer' });
+    const baselines = officeBaselines.get(target) || new Map();
+    for (const sheetData of document.sheets || []) {
+      const sheet = workbook.Sheets[sheetData.name];
+      if (!sheet) continue;
+      const baseline = baselines.get(sheetData.name) || [];
+      const rows = sheetData.rows || [];
+      let endRow = -1; let endColumn = -1;
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        const row = rows[rowIndex] || [];
+        for (let columnIndex = 0; columnIndex < row.length; columnIndex++) {
+          const value = String(row[columnIndex] ?? '');
+          if (value === String(baseline[rowIndex]?.[columnIndex] ?? '')) continue;
+          const address = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex });
+          const cell = sheet[address] || {};
+          delete cell.v; delete cell.w; delete cell.f;
+          if (value.startsWith('=')) { cell.t = 'n'; cell.f = value.slice(1); }
+          else if (value.trim() && Number.isFinite(Number(value))) { cell.t = 'n'; cell.v = Number(value); }
+          else if (/^(true|false)$/i.test(value)) { cell.t = 'b'; cell.v = value.toLowerCase() === 'true'; }
+          else if (value !== '') { cell.t = 's'; cell.v = value; }
+          else { delete cell.t; }
+          sheet[address] = cell;
+          if (value !== '') { endRow = Math.max(endRow, rowIndex); endColumn = Math.max(endColumn, columnIndex); }
+        }
+      }
+      const range = sheet['!ref'] ? XLSX.utils.decode_range(sheet['!ref']) : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
+      range.e.r = Math.max(range.e.r, rows.length - 1, endRow);
+      range.e.c = Math.max(range.e.c, Math.max(0, ...rows.map((row) => row.length - 1)), endColumn);
+      sheet['!ref'] = XLSX.utils.encode_range(range);
+    }
+    output = XLSX.write(workbook, { bookType: extension === '.csv' ? 'csv' : extension === '.tsv' ? 'csv' : 'xlsx', type: 'buffer', FS: extension === '.tsv' ? '\t' : ',' });
+    await fs.promises.writeFile(target, output);
+    officeWorkbooks.set(target, workbook);
+    officeBaselines.set(target, new Map((document.sheets || []).map((sheet) => [sheet.name, sheet.rows.map((row) => row.slice())])));
+  }
+  return { hash: createHash('sha256').update(output).digest('hex') };
 });
 ipcMain.handle('save-workspace-file', async (_event, relativePath, content, expectedContent) => {
   const { target } = await verifyWorkspacePath(relativePath);

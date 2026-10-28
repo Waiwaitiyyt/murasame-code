@@ -47,26 +47,29 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
+    "docx": "^9.15.0",
+    "electron-store": "^8.1.0",
     "fast-glob": "^3.3.2",
     "ink": "^5.0.1",
     "ink-text-input": "^6.0.0",
+    "mammoth": "^1.13.0",
     "openai": "^4.70.0",
     "react": "^18.3.1",
     "slice-ansi": "^7.1.2",
     "string-width": "^7.2.0",
-    "electron-store": "^8.1.0"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0",
     "eslint": "^8.57.1",
     "prettier": "^3.6.2",
     "tsx": "^4.16.0",
-    "typescript": "^5.5.0",
-    "electron": "^28.0.0",
-    "electron-builder": "^24.0.0"
+    "typescript": "^5.5.0"
   },
   "main": "desktop/main.cjs",
   "build": {
