@@ -2,8 +2,9 @@ const { app, BrowserWindow, Menu, Tray, screen, ipcMain, nativeImage, dialog } =
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const { createHash } = require('crypto');
+const { randomUUID } = require('crypto');
 const Store = require('electron-store');
 const { pathToFileURL } = require('url');
 const { languageNames, detectLanguage, translator } = require('./i18n.cjs');
@@ -28,6 +29,35 @@ let agentModules = null;
 let agentRunning = false;
 let currentAgentController = null;
 let terminalProcess = null;
+let lastAgentChanges = { cwd: null, files: new Map() };
+
+async function snapshotWorkspace(root) {
+  const files = new Map(); let totalBytes = 0;
+  async function visit(directory, relative = '') {
+    const entries = await fs.promises.readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (['.git', 'node_modules', '.next', 'dist', 'build', 'coverage'].includes(entry.name)) continue;
+      const rel = path.posix.join(relative.replace(/\\/g, '/'), entry.name);
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) await visit(absolute, rel);
+      else if (entry.isFile() && files.size < 5000 && totalBytes < 40 * 1024 * 1024) {
+        const stat = await fs.promises.stat(absolute); totalBytes += stat.size;
+        if (totalBytes <= 40 * 1024 * 1024) files.set(rel, { content: await fs.promises.readFile(absolute), mode: stat.mode });
+      }
+    }
+  }
+  await visit(root); return files;
+}
+
+function changedFileMap(before, after) {
+  const changed = new Map();
+  for (const rel of new Set([...before.keys(), ...after.keys()])) {
+    const oldFile = before.get(rel) || null; const newFile = after.get(rel) || null;
+    if (oldFile?.content.equals(newFile?.content || Buffer.alloc(0)) && Boolean(oldFile) === Boolean(newFile)) continue;
+    changed.set(rel, { before: oldFile, after: newFile });
+  }
+  return changed;
+}
 
 function sendWorkbenchMenuAction(action) {
   createAppWindow();
@@ -84,17 +114,33 @@ async function getAgentModules() {
   return agentModules;
 }
 
-function getWorkspaceConversation(modules, cwd) {
-  const file = modules.sessionFilePath(cwd);
-  if (fs.existsSync(file)) return modules.loadSession(cwd);
-  const legacy = sessions.get(sessionKey(cwd), null);
+function sessionDirectory(sessionId) {
+  return sessionId === 'default' ? undefined : path.join(app.getPath('userData'), 'workbench-sessions', sessionId);
+}
+
+function workspaceSessions(cwd) {
+  const key = `workbench:${sessionKey(cwd)}`;
+  let state = sessions.get(key, null);
+  if (!state || !Array.isArray(state.items) || !state.items.length) {
+    state = { activeId: 'default', items: [{ id: 'default', name: '默认会话', updatedAt: Date.now() }] };
+    sessions.set(key, state);
+  }
+  if (!state.items.some((item) => item.id === state.activeId)) state.activeId = state.items[0].id;
+  return { key, state };
+}
+
+function getWorkspaceConversation(modules, cwd, id = 'default') {
+  const directory = sessionDirectory(id);
+  const file = modules.sessionFilePath(cwd, directory);
+  if (fs.existsSync(file)) return modules.loadSession(cwd, directory);
+  const legacy = id === 'default' ? sessions.get(sessionKey(cwd), null) : null;
   if (legacy) {
     const conversation = [modules.newConversation(cwd)[0], ...legacy.filter((message) => message.role !== 'system')];
-    modules.saveSession(cwd, conversation);
+    modules.saveSession(cwd, conversation, directory);
     sessions.delete(sessionKey(cwd));
     return conversation;
   }
-  return modules.newConversation(cwd);
+  return modules.loadSession(cwd, directory);
 }
 
 function sessionKey(cwd) {
@@ -329,8 +375,12 @@ ipcMain.handle('choose-workspace', async () => {
   if (agentRunning) throw new Error('请等当前任务完成后再切换工作目录。');
   const result = await dialog.showOpenDialog(appWindow, { properties: ['openDirectory', 'createDirectory'] });
   if (result.canceled || !result.filePaths[0]) return null;
-  config.set('workspace', result.filePaths[0]);
   return result.filePaths[0];
+});
+ipcMain.handle('set-workspace', (_event, folder) => {
+  if (agentRunning) throw new Error('请等当前任务完成后再切换工作目录。');
+  if (typeof folder !== 'string' || !path.isAbsolute(folder) || !fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) throw new Error('工作目录无效。');
+  config.set('workspace', folder); return folder;
 });
 ipcMain.handle('get-workspace', () => config.get('workspace', os.homedir()));
 ipcMain.handle('get-desktop-preferences', () => ({
@@ -460,18 +510,51 @@ ipcMain.handle('reset-permissions', async () => {
 });
 ipcMain.handle('get-usage', () => {
   const cwd = config.get('workspace', os.homedir());
-  return sessions.get(`usage:${sessionKey(cwd)}`, { input: 0, output: 0 });
+  const { state } = workspaceSessions(cwd);
+  const fallback = state.activeId === 'default' ? sessions.get(`usage:${sessionKey(cwd)}`, { input: 0, output: 0 }) : { input: 0, output: 0 };
+  return sessions.get(`usage:${sessionKey(cwd)}:${state.activeId}`, fallback);
 });
 ipcMain.handle('clear-session', async () => {
   if (agentRunning) throw new Error('请等当前任务完成后再清空会话。');
   const cwd = config.get('workspace', os.homedir());
-  const modules = await getAgentModules();
-  modules.clearSession(cwd);
-  sessions.delete(sessionKey(cwd));
-  sessions.delete(`usage:${sessionKey(cwd)}`);
+  const modules = await getAgentModules(); const { state } = workspaceSessions(cwd);
+  modules.clearSession(cwd, sessionDirectory(state.activeId));
+  sessions.delete(`usage:${sessionKey(cwd)}:${state.activeId}`);
+  if (state.activeId === 'default') sessions.delete(sessionKey(cwd));
   return true;
 });
 ipcMain.handle('list-workspace-files', (_event, directory) => listWorkspaceFiles(directory));
+ipcMain.handle('get-workspace-changes', async () => {
+  const { target } = await verifyWorkspacePath('.');
+  const runGit = (args) => new Promise((resolve) => execFile('git', args, { cwd: target, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => resolve(error ? '' : stdout)));
+  const [status, diff] = await Promise.all([runGit(['status', '--short']), runGit(['diff', '--no-ext-diff', '--'])]);
+  const changes = lastAgentChanges.cwd === target ? [...lastAgentChanges.files.entries()] : [];
+  const ownChanges = changes.map(([file, value]) => ({ file, added: !value.before, removed: !value.after }));
+  const ownDiff = changes.map(([file, value]) => {
+    const before = value.before?.content.toString('utf8') ?? '';
+    const after = value.after?.content.toString('utf8') ?? '';
+    if (before.includes('\0') || after.includes('\0')) return `Binary file changed: ${file}`;
+    return `--- ${file} (before)\n${before.split(/\r?\n/).map((line) => `- ${line}`).join('\n')}\n+++ ${file} (after)\n${after.split(/\r?\n/).map((line) => `+ ${line}`).join('\n')}`;
+  }).join('\n\n');
+  return { files: status.split(/\r?\n/).filter(Boolean), diff: (ownDiff || diff).slice(0, 500_000), ownChanges };
+});
+ipcMain.handle('revert-agent-file', async (_event, relativePath) => {
+  const change = lastAgentChanges.cwd === path.resolve(config.get('workspace', os.homedir())) ? lastAgentChanges.files.get(relativePath) : null;
+  if (!change) throw new Error('找不到这次任务记录的文件变更。');
+  const parentPath = path.posix.dirname(String(relativePath).replace(/\\/g, '/'));
+  const { target: safeParent } = await verifyWorkspacePath(parentPath === '.' ? '' : parentPath);
+  const resolved = path.join(safeParent, path.basename(relativePath));
+  try { await verifyWorkspacePath(relativePath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  let current = null;
+  try { current = await fs.promises.readFile(resolved); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if ((current === null) !== (change.after === null) || (current && !current.equals(change.after.content))) throw new Error('文件在任务结束后又发生了变化，请先手动检查。');
+  if (change.before) {
+    const parent = path.dirname(resolved); await fs.promises.mkdir(parent, { recursive: true });
+    await fs.promises.writeFile(resolved, change.before.content, { mode: change.before.mode });
+  } else if (current) await fs.promises.unlink(resolved);
+  lastAgentChanges.files.delete(relativePath);
+  return true;
+});
 ipcMain.handle('read-workspace-file', async (_event, relativePath) => {
   const { target } = await verifyWorkspacePath(relativePath);
   const stat = await fs.promises.stat(target);
@@ -481,50 +564,83 @@ ipcMain.handle('read-workspace-file', async (_event, relativePath) => {
   if (content.includes(0)) throw new Error('这是二进制文件，不能作为文本编辑。');
   return { path: relativePath, content: content.toString('utf8') };
 });
-ipcMain.handle('save-workspace-file', async (_event, relativePath, content) => {
+ipcMain.handle('save-workspace-file', async (_event, relativePath, content, expectedContent) => {
   const { target } = await verifyWorkspacePath(relativePath);
   const stat = await fs.promises.stat(target);
   if (!stat.isFile()) throw new Error('只能保存文件。');
   if (Buffer.byteLength(content, 'utf8') > 1_000_000) throw new Error('文件超过 1 MB，暂不支持在编辑器中保存。');
+  if (typeof expectedContent === 'string' && await fs.promises.readFile(target, 'utf8') !== expectedContent) throw new Error('文件已在其他位置发生变化，请重新载入后再保存。');
   await fs.promises.writeFile(target, content, 'utf8');
   return true;
 });
 ipcMain.handle('get-session', async () => {
   const cwd = config.get('workspace', os.homedir());
   const modules = await getAgentModules();
-  const conversation = getWorkspaceConversation(modules, cwd);
-  return conversation.filter((message) => message.role !== 'system').map((message) => {
+  const { state } = workspaceSessions(cwd);
+  const conversation = getWorkspaceConversation(modules, cwd, state.activeId);
+  return { activeId: state.activeId, sessions: state.items, messages: conversation.filter((message) => message.role !== 'system').map((message) => {
     if (message.role === 'tool') return { type: 'tool', name: message.name, content: message.content };
     if (message.role === 'assistant' && message.toolCalls.length) {
       return { type: 'action', content: message.content, tools: message.toolCalls.map((call) => ({ name: call.name, input: call.input })) };
     }
     return { type: 'message', role: message.role, content: message.content };
-  });
+  }) };
+});
+ipcMain.handle('get-session-index', () => {
+  const cwd = config.get('workspace', os.homedir()); const { state } = workspaceSessions(cwd);
+  return { activeId: state.activeId, sessions: state.items };
 });
 ipcMain.handle('new-session', async () => {
   if (agentRunning) throw new Error('请等当前任务完成后再新建会话。');
   const cwd = config.get('workspace', os.homedir());
-  const modules = await getAgentModules();
-  modules.clearSession(cwd);
-  sessions.delete(sessionKey(cwd));
-  sessions.delete(`usage:${sessionKey(cwd)}`);
-  return true;
+  const { key, state } = workspaceSessions(cwd);
+  const item = { id: randomUUID(), name: '新会话', updatedAt: Date.now() };
+  state.items.unshift(item); state.activeId = item.id; sessions.set(key, state);
+  return item;
+});
+ipcMain.handle('select-session', async (_event, id) => {
+  if (agentRunning) throw new Error('请等当前任务完成后再切换会话。');
+  const cwd = config.get('workspace', os.homedir()); const { key, state } = workspaceSessions(cwd);
+  if (!state.items.some((item) => item.id === id)) throw new Error('找不到这个会话。');
+  state.activeId = id; sessions.set(key, state); return true;
+});
+ipcMain.handle('rename-session', async (_event, id, name) => {
+  const cwd = config.get('workspace', os.homedir()); const { key, state } = workspaceSessions(cwd);
+  const item = state.items.find((entry) => entry.id === id);
+  if (!item) throw new Error('找不到这个会话。');
+  item.name = String(name || '').trim().slice(0, 80) || '未命名会话'; sessions.set(key, state); return true;
+});
+ipcMain.handle('delete-session', async (_event, id) => {
+  if (agentRunning) throw new Error('请等当前任务完成后再删除会话。');
+  const cwd = config.get('workspace', os.homedir()); const { key, state } = workspaceSessions(cwd);
+  if (state.items.length < 2) throw new Error('至少保留一个会话。');
+  const item = state.items.find((entry) => entry.id === id); if (!item) return false;
+  state.items = state.items.filter((entry) => entry.id !== id);
+  if (state.activeId === id) state.activeId = state.items[0].id;
+  sessions.set(key, state);
+  const directory = sessionDirectory(id); if (directory) fs.rmSync(directory, { recursive: true, force: true });
+  else { const modules = await getAgentModules(); modules.clearSession(cwd); sessions.delete(sessionKey(cwd)); }
+  sessions.delete(`usage:${sessionKey(cwd)}:${id}`); return true;
 });
 ipcMain.handle('run-murasame', async (_event, prompt) => {
   if (agentRunning) return { error: '丛雨正在处理上一项任务。' };
   if (!prompt || !prompt.trim()) return { error: '请输入要完成的任务。' };
   const cwd = config.get('workspace', os.homedir());
-  const key = sessionKey(cwd);
+  const workspaceKey = sessionKey(cwd);
+  const { state } = workspaceSessions(cwd); const sessionId = state.activeId; const directory = sessionDirectory(sessionId);
   let conversation;
   let abortController;
   let modules;
+  let workspaceSnapshot = null;
+  let turnError = null;
   agentRunning = true;
   try {
     modules = await getAgentModules();
     const cfg = modules.resolveConfig();
     modules.setLanguage(cfg.language);
-    if (!cfg.apiKey) return { error: '还没有配置模型接口，请先在终端运行 murasame --configure。' };
-    conversation = getWorkspaceConversation(modules, cwd);
+    if (!cfg.apiKey) { turnError = '还没有配置模型接口，请先在终端运行 murasame --configure。'; return { error: turnError }; }
+    workspaceSnapshot = await snapshotWorkspace(cwd);
+    conversation = getWorkspaceConversation(modules, cwd, sessionId);
     abortController = new AbortController();
     currentAgentController = abortController;
     const permissionManager = new modules.PermissionManager(
@@ -536,11 +652,11 @@ ipcMain.handle('run-murasame', async (_event, prompt) => {
     await modules.runTurn(
       modules.createClient(cfg), conversation, prompt,
       {
-        onConversationChange: () => modules.saveSession(cwd, conversation),
+        onConversationChange: () => { modules.saveSession(cwd, conversation, directory); const { key, state: current } = workspaceSessions(cwd); const item = current.items.find((entry) => entry.id === sessionId); if (item) { item.updatedAt = Date.now(); if (item.name === '新会话') item.name = prompt.slice(0, 32); sessions.set(key, current); } },
         onTextDelta: (delta) => appWindow?.webContents.send('agent-event', { type: 'text', delta }),
         onActionTitle: (title) => appWindow?.webContents.send('agent-event', { type: 'action', title }),
         onUsage: (input, output) => {
-          const usageKey = `usage:${key}`;
+          const usageKey = `usage:${workspaceKey}:${sessionId}`;
           const usage = sessions.get(usageKey, { input: 0, output: 0 });
           usage.input += input;
           usage.output += output;
@@ -565,33 +681,38 @@ ipcMain.handle('run-murasame', async (_event, prompt) => {
       cwd,
       permissionManager,
     );
-    modules.saveSession(cwd, conversation);
+    modules.saveSession(cwd, conversation, directory);
     return { ok: true };
   } catch (error) {
+    turnError = error.message || String(error);
     if (conversation && modules) {
-      try { modules.saveSession(cwd, conversation); } catch { /* preserve the original error */ }
+      try { modules.saveSession(cwd, conversation, directory); } catch { /* preserve the original error */ }
     }
-    return { error: error.message || String(error) };
+    return { error: turnError };
   } finally {
+    if (workspaceSnapshot) {
+      try { lastAgentChanges = { cwd: path.resolve(cwd), files: changedFileMap(workspaceSnapshot, await snapshotWorkspace(cwd)) }; }
+      catch { lastAgentChanges = { cwd: path.resolve(cwd), files: new Map() }; }
+    }
     agentRunning = false;
     currentAgentController = null;
-    appWindow?.webContents.send('agent-event', { type: 'done' });
+    appWindow?.webContents.send('agent-event', { type: 'done', error: turnError });
   }
 });
 ipcMain.handle('compact-session', async () => {
   if (agentRunning) return { error: '请等当前任务完成后再压缩会话。' };
   const cwd = config.get('workspace', os.homedir());
-  const key = sessionKey(cwd);
+  const { state } = workspaceSessions(cwd); const sessionId = state.activeId; const directory = sessionDirectory(sessionId);
   const modules = await getAgentModules();
   const cfg = modules.resolveConfig();
   modules.setLanguage(cfg.language);
-  const conversation = getWorkspaceConversation(modules, cwd);
+  const conversation = getWorkspaceConversation(modules, cwd, sessionId);
   if (conversation.length <= 1) return { error: '当前没有可压缩的较早对话。' };
   try {
     const result = await modules.compactConversation(modules.createClient(cfg), conversation, new AbortController().signal);
-    modules.saveSession(cwd, conversation);
+    modules.saveSession(cwd, conversation, directory);
     if (result.usage) {
-      const usageKey = `usage:${key}`;
+      const usageKey = `usage:${sessionKey(cwd)}:${sessionId}`;
       const usage = sessions.get(usageKey, { input: 0, output: 0 });
       usage.input += result.usage.inputTokens;
       usage.output += result.usage.outputTokens;
