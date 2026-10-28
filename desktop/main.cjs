@@ -575,6 +575,18 @@ ipcMain.handle('read-workspace-image', async (_event, relativePath) => {
   const buffer = await fs.promises.readFile(target);
   return { path: relativePath, mimeType, data: buffer.toString('base64') };
 });
+ipcMain.handle('read-workspace-pdf', async (_event, relativePath) => {
+  if (path.extname(String(relativePath)).toLowerCase() !== '.pdf') throw new Error('只能打开 PDF 文件。');
+  const { target } = await verifyWorkspacePath(relativePath);
+  const stat = await fs.promises.stat(target);
+  if (!stat.isFile()) throw new Error('只能打开文件。');
+  if (stat.size > 100 * 1024 * 1024) throw new Error('PDF 超过 100 MB，暂不支持预览。');
+  const header = Buffer.alloc(1024);
+  const handle = await fs.promises.open(target, 'r');
+  try { await handle.read(header, 0, header.length, 0); } finally { await handle.close(); }
+  if (!header.includes(Buffer.from('%PDF-'))) throw new Error('文件内容不是有效的 PDF。');
+  return { path: relativePath, url: pathToFileURL(target).href };
+});
 ipcMain.handle('save-workspace-file', async (_event, relativePath, content, expectedContent) => {
   const { target } = await verifyWorkspacePath(relativePath);
   const stat = await fs.promises.stat(target);
