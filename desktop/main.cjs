@@ -564,6 +564,17 @@ ipcMain.handle('read-workspace-file', async (_event, relativePath) => {
   if (content.includes(0)) throw new Error('这是二进制文件，不能作为文本编辑。');
   return { path: relativePath, content: content.toString('utf8') };
 });
+ipcMain.handle('read-workspace-image', async (_event, relativePath) => {
+  const extensions = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp', '.ico': 'image/x-icon', '.svg': 'image/svg+xml' };
+  const mimeType = extensions[path.extname(String(relativePath)).toLowerCase()];
+  if (!mimeType) throw new Error('暂不支持预览这种图片格式。');
+  const { target } = await verifyWorkspacePath(relativePath);
+  const stat = await fs.promises.stat(target);
+  if (!stat.isFile()) throw new Error('只能打开文件。');
+  if (stat.size > 20 * 1024 * 1024) throw new Error('图片超过 20 MB，暂不支持预览。');
+  const buffer = await fs.promises.readFile(target);
+  return { path: relativePath, mimeType, data: buffer.toString('base64') };
+});
 ipcMain.handle('save-workspace-file', async (_event, relativePath, content, expectedContent) => {
   const { target } = await verifyWorkspacePath(relativePath);
   const stat = await fs.promises.stat(target);
