@@ -36,8 +36,8 @@
         </div>
         <div class="menu-inline-actions"><button id="upload-background">上传图片…</button><button id="clear-background">清除背景</button></div>
       </div>
-      <div class="menu-section command-section">
-        <div class="menu-section-title">会话命令</div>
+      <details class="menu-section command-section">
+        <summary class="menu-section-title">会话命令</summary>
         <button class="command-row" data-command="/help"><code>/help</code><span>显示命令帮助</span></button>
         <button class="command-row" data-command="/clear"><code>/clear</code><span>清空当前会话</span></button>
         <button class="command-row" data-command="/config"><code>/config</code><span>配置模型接口</span></button>
@@ -48,7 +48,7 @@
         <button class="command-row" data-command="/compact"><code>/compact</code><span>压缩较早的对话</span></button>
         <button class="command-row" data-command="/permission"><code>/permission</code><span>工具权限模式</span></button>
         <button class="command-row command-exit" data-command="/exit"><code>/exit</code><span>退出应用</span></button>
-      </div>
+      </details>
   </aside>
   <nav class="workbench-nav">
     <div class="nav-pages">
@@ -61,12 +61,14 @@
   </nav>
   <main>
     <section id="agent" class="page active">
+      <div class="session-toolbar"><select id="session-select" aria-label="当前会话"></select><button id="rename-session" type="button">重命名</button><button id="delete-session" type="button">删除</button></div>
       <div class="welcome"><div class="seal"><img id="welcome-avatar" src="assets/icon.png" alt="丛雨头像"></div><div class="welcome-copy"><span class="welcome-kicker">MURASAME / WORKSPACE</span><h1>汝の願い、聞き届けよう。</h1><p>丛雨会在选定的工作目录里阅读和修改项目。</p></div><span class="welcome-flower" aria-hidden="true">✿</span></div>
       <div id="conversation" class="conversation"><div class="hint">试试：<button class="suggestion">阅读项目结构并总结</button><button class="suggestion">检查当前项目中的问题</button></div></div>
-      <form id="prompt-form" class="composer"><div id="slash-menu" class="slash-menu" role="listbox" aria-label="会话命令" hidden></div><textarea id="prompt" rows="3" placeholder="描述任务，或输入 / 使用命令…（Enter 发送，Shift+Enter 换行）" aria-controls="slash-menu" aria-expanded="false"></textarea><div class="composer-footer"><span id="agent-status">由 murasame-code 提供 · 请检查 AI 生成的修改</span><div><button id="stop-agent" type="button" hidden>停止</button><button id="send" type="submit">交给丛雨 ↗</button></div></div></form>
+      <details id="change-review" class="change-review" hidden><summary><span>本次任务的文件变更</span><span id="change-count"></span></summary><div id="change-list"></div><pre id="change-diff"></pre></details>
+      <form id="prompt-form" class="composer"><div id="slash-menu" class="slash-menu" role="listbox" aria-label="会话命令" hidden></div><textarea id="prompt" rows="3" placeholder="描述任务，或输入 / 使用命令…（Enter 发送，Shift+Enter 换行）" aria-controls="slash-menu" aria-expanded="false"></textarea><div class="composer-footer"><span id="agent-status" aria-live="polite">由 murasame-code 提供 · 请检查 AI 生成的修改</span><div><button id="stop-agent" type="button" hidden>停止</button><button id="send" type="submit">交给丛雨 ↗</button></div></div></form>
     </section>
     <section id="files" class="page workbench-page">
-      <aside class="file-sidebar"><div class="panel-heading"><b>项目文件</b><button id="refresh-files" title="刷新">↻</button></div><div id="file-breadcrumb"></div><div id="file-list"></div></aside>
+      <aside class="file-sidebar"><div class="panel-heading"><b>项目文件</b><button id="refresh-files" title="刷新">↻</button></div><input id="file-search" type="search" placeholder="筛选文件…" aria-label="筛选文件"><div id="file-breadcrumb"></div><div id="file-list"></div></aside>
       <div class="editor-panel"><div class="panel-heading"><span id="editor-path">选择文件以查看</span><div><button id="markdown-toggle" type="button" hidden aria-pressed="false">渲染预览</button><span id="save-status"></span><button id="save-file" disabled>保存</button></div></div><textarea id="file-editor" spellcheck="false" placeholder="从左侧选择文本文件"></textarea><div id="markdown-preview" class="markdown-preview" hidden></div></div>
     </section>
     <section id="terminal" class="page terminal-page">

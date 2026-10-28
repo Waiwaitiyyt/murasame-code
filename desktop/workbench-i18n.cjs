@@ -2,6 +2,9 @@
 const workbenchTranslations = {
   zh: { '文件菜单': '文件' },
   en: {
+    '本次任务': 'this task',
+    '任务失败：': 'Task failed: ', '命令退出，代码：': 'Command exited with code: ',
+    '重命名': 'Rename', '删除': 'Delete', '筛选文件…': 'Filter files…', '本次任务的文件变更': 'Files changed in this task', '保存并继续': 'Save and continue', '放弃修改': 'Discard changes', '文件有未保存的修改': 'This file has unsaved changes', '输入会话名称': 'Enter a session name', '删除当前会话及其记录？': 'Delete this session and its history?', '至少保留一个会话。': 'Keep at least one session.', '请等当前任务完成后再切换会话。': 'Wait for the current task to finish before switching sessions.', '请等当前任务完成后再删除会话。': 'Wait for the current task to finish before deleting a session.', '找不到这个会话。': 'Session not found.', '未命名会话': 'Untitled session', '新会话': 'New session', '默认会话': 'Default session', '撤销此文件': 'Revert this file', '恢复任务前版本？': 'Restore this file to its pre-task version?', '没有已跟踪文件的差异；新增文件仍列在上方。': 'No tracked-file diff; new files are listed above.', '执行中：': 'Working: ', '执行工具：': 'Running tool: ', '任务已停止。': 'Task stopped.', '正在停止…': 'Stopping…', '执行中': 'Working', '新增': 'Added', '删除': 'Deleted', '修改': 'Modified',
     '文件菜单': 'File',
     '打开设置面板…': 'Open Settings…', '关闭窗口': 'Close Window', '编辑': 'Edit', '撤销': 'Undo', '重做': 'Redo', '剪切': 'Cut', '复制': 'Copy', '粘贴': 'Paste', '全选': 'Select All', '视图': 'View', '重新加载': 'Reload', '开发者工具': 'Developer Tools', '窗口': 'Window', '最小化': 'Minimize',
     '路径超出当前工作目录。': 'Path is outside the current workspace.', '不支持这张内置背景图。': 'This built-in background is not supported.', '背景图片不能超过 20 MB。': 'Background image must be 20 MB or smaller.', '头像图片不能超过 10 MB。': 'Avatar image must be 10 MB or smaller.', '接口类型无效。': 'Invalid provider.', '模型名称无效。': 'Invalid model name.', 'Base URL 格式无效。': 'Invalid Base URL.', 'Base URL 仅支持 HTTP 或 HTTPS。': 'Base URL must use HTTP or HTTPS.', '权限模式无效。': 'Invalid permission mode.', '语言选项无效。': 'Invalid language.',
@@ -29,6 +32,9 @@ const workbenchTranslations = {
     '切换模型名称…': 'Change model…', '打开完整模型设置': 'Open model settings', '输入模型名称': 'Enter model name', '自动': 'Automatic', '手动': 'Manual', '完全访问': 'Full Access', '危险操作会请求确认': 'Ask before risky operations', '每次工具调用都请求确认': 'Ask before every tool call', '不弹出工具确认': 'Never ask for tool confirmation', '清除已记住的授权': 'Clear remembered permissions',
   },
   ja: {
+    '本次任务': '今回のタスク',
+    '任务失败：': 'タスク失敗：', '命令退出，代码：': 'コマンド終了コード：',
+    '重命名': '名前を変更', '删除': '削除', '筛选文件…': 'ファイルを絞り込む…', '本次任务的文件变更': '今回のタスクで変更したファイル', '保存并继续': '保存して続行', '放弃修改': '変更を破棄', '文件有未保存的修改': '未保存の変更があります', '输入会话名称': '会話名を入力', '删除当前会话及其记录？': 'この会話と履歴を削除しますか？', '至少保留一个会话。': '会話を1つ以上残してください。', '请等当前任务完成后再切换会话。': '作業終了後に会話を切り替えてください。', '请等当前任务完成后再删除会话。': '作業終了後に会話を削除してください。', '找不到这个会话。': '会話が見つかりません。', '未命名会话': '無題の会話', '新会话': '新しい会話', '默认会话': '既定の会話', '撤销此文件': 'このファイルを元に戻す', '恢复任务前版本？': 'タスク前の状態に戻しますか？', '没有已跟踪文件的差异；新增文件仍列在上方。': '追跡中の差分はありません。新規ファイルは上に表示されています。', '执行中：': '実行中：', '执行工具：': 'ツール実行中：', '任务已停止。': 'タスクを停止しました。', '正在停止…': '停止中…', '新增': '追加', '删除': '削除', '修改': '変更',
     '文件菜单': 'ファイル',
     '打开设置面板…': '設定を開く…', '关闭窗口': 'ウィンドウを閉じる', '编辑': '編集', '撤销': '元に戻す', '重做': 'やり直す', '剪切': '切り取り', '复制': 'コピー', '粘贴': '貼り付け', '全选': 'すべて選択', '视图': '表示', '重新加载': '再読み込み', '开发者工具': '開発者ツール', '窗口': 'ウィンドウ', '最小化': '最小化',
     '路径超出当前工作目录。': 'パスが現在の作業フォルダーの外にあります。', '不支持这张内置背景图。': 'この内蔵背景は使用できません。', '背景图片不能超过 20 MB。': '背景画像は 20 MB 以下にしてください。', '头像图片不能超过 10 MB。': 'アイコン画像は 10 MB 以下にしてください。', '接口类型无效。': 'プロバイダーが無効です。', '模型名称无效。': 'モデル名が無効です。', 'Base URL 格式无效。': 'Base URL の形式が無効です。', 'Base URL 仅支持 HTTP 或 HTTPS。': 'Base URL は HTTP または HTTPS のみ対応しています。', '权限模式无效。': '権限モードが無効です。', '语言选项无效。': '言語が無効です。',

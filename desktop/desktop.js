@@ -9,13 +9,18 @@ let terminalRunning = false;
 let detailLevel = 'all';
 let uiLanguage = 'zh';
 let fileRefreshToken = 0;
+let sessionState = { activeId: 'default', sessions: [] };
+let terminalHistory = [];
+let terminalHistoryIndex = 0;
+let workspaceEntries = [];
+let agentStopRequested = false;
 const originalUiText = new WeakMap();
 const originalUiAttributes = new WeakMap();
 const t = (key) => window.workbenchTranslate(uiLanguage, key);
 function translateWorkbench() {
   document.documentElement.lang = { zh: 'zh-CN', en: 'en', ja: 'ja' }[uiLanguage];
   document.title = t('丛雨code工作台');
-  const staticRoots = ['.topbar', '#app-menu', '.workbench-nav', '.welcome', '.composer', '.file-sidebar', '.editor-panel > .panel-heading', '#file-editor', '.terminal-heading', '#terminal-form', '.app-dialog'];
+  const staticRoots = ['.topbar', '#app-menu', '.workbench-nav', '.session-toolbar', '.welcome', '.composer', '#change-review', '.file-sidebar', '.editor-panel > .panel-heading', '#file-editor', '.terminal-heading', '#terminal-form', '.app-dialog'];
   for (const selector of staticRoots) {
     document.querySelectorAll(selector).forEach((root) => {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -150,8 +155,24 @@ async function refreshWorkspace() {
 }
 
 async function refreshSession() {
-  try { renderSession(await ipcRenderer.invoke('get-session')); }
+  try {
+    const data = await ipcRenderer.invoke('get-session');
+    sessionState = { activeId: data.activeId, sessions: data.sessions };
+    const select = document.getElementById('session-select');
+    select.replaceChildren(...data.sessions.map((item) => { const option = document.createElement('option'); option.value = item.id; option.textContent = item.name; return option; }));
+    select.value = data.activeId;
+    document.getElementById('delete-session').disabled = data.sessions.length < 2;
+    renderSession(data.messages);
+  }
   catch (error) { status.textContent = error.message; }
+}
+async function refreshSessionIndex() {
+  const data = await ipcRenderer.invoke('get-session-index');
+  sessionState = { activeId: data.activeId, sessions: data.sessions };
+  const select = document.getElementById('session-select');
+  select.replaceChildren(...data.sessions.map((item) => { const option = document.createElement('option'); option.value = item.id; option.textContent = item.name; return option; }));
+  select.value = data.activeId;
+  document.getElementById('delete-session').disabled = data.sessions.length < 2;
 }
 
 function setPage(pageId) {
@@ -423,6 +444,8 @@ document.getElementById('ui-language').addEventListener('change', async (event) 
 async function chooseWorkspace() {
   const folder = await ipcRenderer.invoke('choose-workspace');
   if (folder) {
+    if (!await protectUnsavedFile()) return;
+    await ipcRenderer.invoke('set-workspace', folder);
     currentDirectory = '';
     openFile = null;
     savedContents = '';
@@ -436,6 +459,26 @@ async function chooseWorkspace() {
     updateFileSelection();
     await refreshWorkspace();
   }
+}
+async function protectUnsavedFile() {
+  if (editor.value === savedContents || !openFile) return true;
+  const action = await choose(t('文件有未保存的修改'), [
+    { label: t('保存并继续'), value: 'save' },
+    { label: t('放弃修改'), value: 'discard' },
+    { label: t('取消'), value: 'cancel' },
+  ]);
+  if (action === 'discard') return true;
+  if (action !== 'save') return false;
+  return saveOpenFile();
+}
+async function saveOpenFile() {
+  if (!openFile) return true;
+  try {
+    await ipcRenderer.invoke('save-workspace-file', openFile, editor.value, savedContents);
+    savedContents = editor.value;
+    document.getElementById('save-status').textContent = t('已保存');
+    return true;
+  } catch (error) { showNotice(error.message, true); return false; }
 }
 ipcRenderer.on('workbench-menu-action', (_event, action) => {
   if (action === 'open-folder') chooseWorkspace().catch((error) => showNotice(error.message, true));
@@ -503,6 +546,15 @@ document.getElementById('agent-config-form').addEventListener('submit', async (e
 });
 
 document.querySelectorAll('.nav-pages .tab').forEach((button) => button.addEventListener('click', () => setPage(button.dataset.page)));
+document.addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && ['1', '2', '3'].includes(event.key)) {
+    event.preventDefault(); setPage(['agent', 'files', 'terminal'][Number(event.key) - 1]);
+  } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault(); setPage('files'); const search = document.getElementById('file-search'); search.focus(); search.select();
+  } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l') {
+    event.preventDefault(); prompt.focus();
+  }
+});
 document.getElementById('workspace').addEventListener('click', () => chooseWorkspace().catch((error) => showNotice(error.message, true)));
 document.getElementById('pet-mode').addEventListener('click', () => ipcRenderer.send('minimize-to-pet'));
 document.getElementById('tray-mode').addEventListener('click', () => ipcRenderer.send('minimize-to-tray'));
@@ -514,6 +566,24 @@ document.getElementById('new-session').addEventListener('click', async () => {
     setPage('agent');
     prompt.focus();
   } catch (error) { showNotice(error.message, true); }
+});
+document.getElementById('session-select').addEventListener('change', async (event) => {
+  const nextId = event.target.value;
+  if (!await protectUnsavedFile()) { event.target.value = sessionState.activeId; return; }
+  try { await ipcRenderer.invoke('select-session', nextId); currentAnswer = null; await refreshSession(); }
+  catch (error) { showNotice(error.message, true); }
+});
+document.getElementById('rename-session').addEventListener('click', async () => {
+  const active = sessionState.sessions.find((item) => item.id === sessionState.activeId);
+  const name = window.prompt(t('输入会话名称'), active?.name || '');
+  if (name === null) return;
+  try { await ipcRenderer.invoke('rename-session', sessionState.activeId, name); await refreshSession(); }
+  catch (error) { showNotice(error.message, true); }
+});
+document.getElementById('delete-session').addEventListener('click', async () => {
+  if (!window.confirm(t('删除当前会话及其记录？'))) return;
+  try { await ipcRenderer.invoke('delete-session', sessionState.activeId); currentAnswer = null; await refreshSession(); }
+  catch (error) { showNotice(error.message, true); }
 });
 
 document.querySelectorAll('.suggestion').forEach((button) => button.addEventListener('click', () => { prompt.value = button.textContent; prompt.focus(); }));
@@ -540,6 +610,7 @@ document.getElementById('prompt-form').addEventListener('submit', async (event) 
   if (prompt.value.trim().startsWith('/')) { executeSlashCommand(prompt.value.trim()); return; }
   if (running) return;
   running = true;
+  agentStopRequested = false;
   send.disabled = true;
   document.getElementById('stop-agent').hidden = false;
   status.textContent = t('丛雨正在处理…');
@@ -559,16 +630,18 @@ document.getElementById('prompt-form').addEventListener('submit', async (event) 
     currentAnswer.classList.add('error');
   }
 });
-document.getElementById('stop-agent').addEventListener('click', () => ipcRenderer.send('stop-agent'));
+document.getElementById('stop-agent').addEventListener('click', () => { agentStopRequested = true; status.textContent = t('正在停止…'); ipcRenderer.send('stop-agent'); });
 ipcRenderer.on('agent-event', (_event, data) => {
   if (data.type === 'text') {
     if (currentAnswer?.dataset.rawMarkdown === t('丛雨正在思考…')) updateAssistantMarkdown(currentAnswer, '');
     if (currentAnswer) updateAssistantMarkdown(currentAnswer, `${currentAnswer.dataset.rawMarkdown ?? ''}${data.delta}`);
     conversation.scrollTop = conversation.scrollHeight;
   } else if (data.type === 'action') {
+    status.textContent = `${t('执行中：')}${data.title}`;
     addToolEvent(`${t('行动：')}${data.title}`);
     currentAnswer = appendBubble('assistant', t('丛雨正在思考…'));
   } else if (data.type === 'tool') {
+    status.textContent = `${t('执行工具：')}${data.name}${data.target ? ` · ${data.target}` : ''}`;
     if (detailLevel !== 'off') {
       const summary = `${data.ok ? '✓' : '✕'} ${data.name}${data.target ? ` · ${data.target}` : ''}`;
       const result = detailLevel === 'all' ? data.result : detailLevel === 'threeLines' ? data.result.split('\n').slice(0, 3).join('\n') : '';
@@ -578,8 +651,11 @@ ipcRenderer.on('agent-event', (_event, data) => {
     running = false;
     send.disabled = false;
     document.getElementById('stop-agent').hidden = true;
-    status.textContent = t('由 murasame-code 提供 · 请检查 AI 生成的修改');
+    status.textContent = data.error ? `${t('任务失败：')}${t(data.error)}` : t('由 murasame-code 提供 · 请检查 AI 生成的修改');
     refreshFiles();
+    refreshChanges();
+    if (agentStopRequested) status.textContent = t('任务已停止。');
+    refreshSessionIndex();
   }
 });
 
@@ -609,6 +685,7 @@ async function refreshFiles() {
       const button = document.createElement('button');
       button.className = `file-entry ${entry.directory ? 'directory' : ''}`;
       button.dataset.path = entry.path;
+      button.dataset.search = entry.name.toLocaleLowerCase();
       button.textContent = `${entry.directory ? '▸' : '·'}  ${entry.name}`;
       button.title = entry.path;
       button.addEventListener('click', () => {
@@ -638,6 +715,7 @@ function updateFileSelection() {
 }
 
 async function loadFile(filePath) {
+  if (!await protectUnsavedFile()) return;
   try {
     const file = await ipcRenderer.invoke('read-workspace-file', filePath);
     openFile = file.path;
@@ -664,15 +742,38 @@ editor.addEventListener('input', () => {
   document.getElementById('save-status').textContent = editor.value === savedContents ? '' : t('未保存');
 });
 document.getElementById('save-file').addEventListener('click', async () => {
-  if (!openFile) return;
-  try {
-    await ipcRenderer.invoke('save-workspace-file', openFile, editor.value);
-    savedContents = editor.value;
-    document.getElementById('save-status').textContent = t('已保存');
-    setTimeout(() => { if (document.getElementById('save-status').textContent === t('已保存')) document.getElementById('save-status').textContent = ''; }, 1600);
-  } catch (error) { window.alert(t(error.message)); }
+  if (await saveOpenFile()) setTimeout(() => { if (document.getElementById('save-status').textContent === t('已保存')) document.getElementById('save-status').textContent = ''; }, 1600);
 });
 document.getElementById('refresh-files').addEventListener('click', refreshFiles);
+document.getElementById('file-search').addEventListener('input', (event) => {
+  const query = event.target.value.trim().toLocaleLowerCase();
+  fileList.querySelectorAll('.file-entry[data-path]').forEach((button) => {
+    button.hidden = Boolean(query && !button.dataset.search.includes(query) && !button.dataset.path.toLocaleLowerCase().includes(query));
+  });
+});
+
+async function refreshChanges() {
+  const panel = document.getElementById('change-review');
+  try {
+    const result = await ipcRenderer.invoke('get-workspace-changes');
+    panel.hidden = !result.files.length && !result.ownChanges.length;
+    document.getElementById('change-count').textContent = result.ownChanges.length ? `(${result.ownChanges.length} ${t('本次任务')})` : (result.files.length ? `(${result.files.length})` : '');
+    const list = document.getElementById('change-list'); list.replaceChildren();
+    result.ownChanges.forEach((change) => {
+      const row = document.createElement('div'); row.className = 'change-row';
+      const label = document.createElement('span'); label.textContent = `${t(change.added ? '新增' : change.removed ? '删除' : '修改')} · ${change.file}`;
+      row.append(label);
+      const revert = document.createElement('button'); revert.type = 'button'; revert.textContent = t('撤销此文件');
+      revert.addEventListener('click', async () => {
+        if (!window.confirm(`${t('恢复任务前版本？')}\n${change.file}`)) return;
+        try { await ipcRenderer.invoke('revert-agent-file', change.file); await refreshChanges(); await refreshFiles(); }
+        catch (error) { showNotice(error.message, true); }
+      }); row.append(revert); list.append(row);
+    });
+    if (!result.ownChanges.length) result.files.forEach((line) => { const item = document.createElement('div'); item.textContent = line; list.append(item); });
+    document.getElementById('change-diff').textContent = result.diff || t('没有已跟踪文件的差异；新增文件仍列在上方。');
+  } catch { panel.hidden = true; }
+}
 
 function appendTerminal(text) {
   terminalOutput.dataset.used = 'true';
@@ -686,15 +787,29 @@ document.getElementById('terminal-form').addEventListener('submit', async (event
   const command = input.value.trim();
   if (!command || terminalRunning) return;
   terminalRunning = true;
+  terminalHistory.unshift(command); terminalHistory = terminalHistory.slice(0, 100); terminalHistoryIndex = -1;
   document.getElementById('run-command').disabled = true;
   document.getElementById('stop-command').hidden = false;
   appendTerminal(`\n$ ${command}\n`);
   input.value = '';
-  const result = await ipcRenderer.invoke('run-terminal', command);
-  if (result.error) appendTerminal(`${result.error}\n`);
-  terminalRunning = false;
-  document.getElementById('run-command').disabled = false;
-  document.getElementById('stop-command').hidden = true;
+  try {
+    const result = await ipcRenderer.invoke('run-terminal', command);
+    if (result.error) appendTerminal(`${result.error}\n`);
+    else if (result.code !== 0) appendTerminal(`\n${t('命令退出，代码：')}${result.code}\n`);
+  } catch (error) { appendTerminal(`${error.message}\n`); }
+  finally {
+    terminalRunning = false;
+    document.getElementById('run-command').disabled = false;
+    document.getElementById('stop-command').hidden = true;
+  }
+});
+document.getElementById('terminal-command').addEventListener('keydown', (event) => {
+  const input = event.currentTarget;
+  if (event.key === 'ArrowUp' && (terminalHistoryIndex < terminalHistory.length - 1)) {
+    event.preventDefault(); terminalHistoryIndex++; input.value = terminalHistory[terminalHistoryIndex] || '';
+  } else if (event.key === 'ArrowDown' && terminalHistoryIndex >= 0) {
+    event.preventDefault(); terminalHistoryIndex--; input.value = terminalHistoryIndex < 0 ? '' : terminalHistory[terminalHistoryIndex];
+  }
 });
 document.getElementById('stop-command').addEventListener('click', () => ipcRenderer.send('stop-terminal'));
 document.getElementById('clear-terminal').addEventListener('click', () => { terminalOutput.textContent = ''; });
