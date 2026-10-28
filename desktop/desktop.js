@@ -16,13 +16,17 @@ let workspaceEntries = [];
 let agentStopRequested = false;
 let imageFit = true;
 let imageZoom = 1;
+let officeDocument = null;
+let officeHash = null;
+let officeDirty = false;
+let codeOpacity = 0.82;
 const originalUiText = new WeakMap();
 const originalUiAttributes = new WeakMap();
 const t = (key) => window.workbenchTranslate(uiLanguage, key);
 function translateWorkbench() {
   document.documentElement.lang = { zh: 'zh-CN', en: 'en', ja: 'ja' }[uiLanguage];
   document.title = t('丛雨code工作台');
-  const staticRoots = ['.topbar', '#app-menu', '.workbench-nav', '.welcome', '.composer', '#change-review', '.file-sidebar', '.editor-panel > .panel-heading', '#file-editor', '.terminal-heading', '#terminal-form', '.app-dialog'];
+  const staticRoots = ['.topbar', '#app-menu', '#background-menu', '.workbench-nav', '.welcome', '.composer', '#change-review', '.file-sidebar', '.editor-panel > .panel-heading', '#file-editor', '#office-preview', '.terminal-heading', '#terminal-form', '.app-dialog'];
   for (const selector of staticRoots) {
     document.querySelectorAll(selector).forEach((root) => {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -51,7 +55,7 @@ function translateWorkbench() {
   setMarkdownPreview(!markdownPreview.hidden);
   if (!openFile) document.getElementById('editor-path').textContent = t('选择文件以查看');
   if (!running) status.textContent = t('由 murasame-code 提供 · 请检查 AI 生成的修改');
-  if (editor.value !== savedContents) document.getElementById('save-status').textContent = t('未保存');
+  if (isEditorDirty()) document.getElementById('save-status').textContent = t('未保存');
   document.getElementById('ui-language').value = uiLanguage;
   syncNavAccessibility();
   updateSlashMenu();
@@ -89,6 +93,7 @@ const providerDefaults = {
   claude: { baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-5' },
   openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' },
 };
+function isEditorDirty() { return officeDocument ? officeDirty : editor.value !== savedContents; }
 
 function appendBubble(role, content) {
   conversation.querySelector('.hint')?.remove();
@@ -208,6 +213,13 @@ function closeMenu(returnFocus = false) {
   appMenu.hidden = true;
   document.getElementById('studio-settings').setAttribute('aria-expanded', 'false');
   if (returnFocus) document.getElementById('studio-settings').focus();
+}
+function closeBackgroundMenu(returnFocus = false) {
+  const menu = document.getElementById('background-menu');
+  if (menu.hidden) return;
+  menu.hidden = true;
+  document.getElementById('background-toggle').setAttribute('aria-expanded', 'false');
+  if (returnFocus) document.getElementById('background-toggle').focus();
 }
 
 function openMenu() {
@@ -418,7 +430,7 @@ async function selectBackground(name) {
     const url = await ipcRenderer.invoke('set-background', name);
     applyBackground(url);
     updateBackgroundSelection(name ? { kind: 'builtin', name } : null);
-    closeMenu();
+    closeBackgroundMenu();
   } catch (error) { showNotice(error.message, true); }
 }
 
@@ -444,6 +456,8 @@ async function initializeAppearance() {
   uiLanguage = preferences.uiLanguage || 'zh';
   translateWorkbench();
   detailLevel = preferences.detailLevel || 'all';
+  codeOpacity = Number.isFinite(preferences.codeOpacity) ? preferences.codeOpacity : 0.82;
+  updateCodeOpacityControl();
   applyTheme(preferences.theme);
   const [background, backgroundUrl] = await Promise.all([
     Promise.resolve(preferences.background), ipcRenderer.invoke('get-background-url'),
@@ -458,6 +472,18 @@ document.getElementById('ui-language').addEventListener('change', async (event) 
   await ipcRenderer.invoke('set-desktop-preference', 'uiLanguage', uiLanguage);
   translateWorkbench();
 });
+function updateCodeOpacityControl() {
+  document.documentElement.style.setProperty('--code-editor-opacity', String(codeOpacity));
+  const slider = document.getElementById('code-opacity');
+  if (slider) slider.value = String(Math.round(codeOpacity * 100));
+  const label = document.getElementById('code-opacity-value');
+  if (label) label.textContent = `${Math.round(codeOpacity * 100)}%`;
+}
+document.getElementById('code-opacity').addEventListener('input', (event) => {
+  codeOpacity = Number(event.target.value) / 100;
+  updateCodeOpacityControl();
+});
+document.getElementById('code-opacity').addEventListener('change', () => ipcRenderer.invoke('set-desktop-preference', 'codeOpacity', codeOpacity));
 async function chooseWorkspace() {
   const folder = await ipcRenderer.invoke('choose-workspace');
   if (folder) {
@@ -467,15 +493,17 @@ async function chooseWorkspace() {
     openFile = null;
     savedContents = '';
     editor.value = '';
+    officeDocument = null; officeHash = null; officeDirty = false;
     document.getElementById('editor-path').textContent = t('选择文件以查看');
     document.getElementById('editor-path').removeAttribute('title');
     document.getElementById('save-file').disabled = true;
     document.getElementById('save-status').textContent = '';
-    setMarkdownPreview(false);
-    markdownToggle.hidden = true;
     document.getElementById('image-preview').hidden = true;
+    document.getElementById('office-preview').hidden = true;
     document.getElementById('pdf-preview').hidden = true;
     document.getElementById('pdf-preview').src = 'about:blank';
+    setMarkdownPreview(false);
+    markdownToggle.hidden = true;
     updateCodeHighlight('', '');
     for (const id of ['image-dimensions', 'image-zoom-out', 'image-zoom-label', 'image-fit', 'image-zoom-in']) document.getElementById(id).hidden = true;
     updateFileSelection();
@@ -483,7 +511,7 @@ async function chooseWorkspace() {
   }
 }
 async function protectUnsavedFile() {
-  if (editor.value === savedContents || !openFile) return true;
+  if (!isEditorDirty() || !openFile) return true;
   const action = await choose(t('文件有未保存的修改'), [
     { label: t('保存并继续'), value: 'save' },
     { label: t('放弃修改'), value: 'discard' },
@@ -496,6 +524,12 @@ async function protectUnsavedFile() {
 async function saveOpenFile() {
   if (!openFile) return true;
   try {
+    if (officeDocument) {
+      const result = await ipcRenderer.invoke('save-workspace-office', openFile, officeDocument, officeHash);
+      officeHash = result.hash; officeDirty = false;
+      document.getElementById('save-status').textContent = t('已保存');
+      return true;
+    }
     await ipcRenderer.invoke('save-workspace-file', openFile, editor.value, savedContents);
     savedContents = editor.value;
     document.getElementById('save-status').textContent = t('已保存');
@@ -514,8 +548,22 @@ document.getElementById('studio-settings').addEventListener('click', () => {
 });
 document.addEventListener('click', (event) => {
   if (!appMenu.hidden && !appMenu.contains(event.target) && !document.getElementById('studio-settings').contains(event.target)) closeMenu();
+  const backgroundMenu = document.getElementById('background-menu');
+  if (!backgroundMenu.hidden && !backgroundMenu.contains(event.target) && !document.getElementById('background-toggle').contains(event.target)) closeBackgroundMenu();
 });
-document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !appMenu.hidden) { event.preventDefault(); closeMenu(true); } });
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (!appMenu.hidden) { event.preventDefault(); closeMenu(true); }
+  if (!document.getElementById('background-menu').hidden) { event.preventDefault(); closeBackgroundMenu(true); }
+});
+document.getElementById('background-menu').addEventListener('click', (event) => event.stopPropagation());
+document.getElementById('background-toggle').addEventListener('click', () => {
+  const menu = document.getElementById('background-menu');
+  if (menu.hidden) {
+    closeMenu(); menu.hidden = false; document.getElementById('background-toggle').setAttribute('aria-expanded', 'true');
+    document.getElementById('code-opacity').focus();
+  } else closeBackgroundMenu(true);
+});
 document.getElementById('theme-toggle').addEventListener('click', async () => {
   const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   applyTheme(theme);
@@ -529,7 +577,7 @@ document.getElementById('upload-background').addEventListener('click', async () 
     if (!url) return;
     applyBackground(url);
     updateBackgroundSelection({ kind: 'uploaded' });
-    closeMenu();
+    closeBackgroundMenu();
   } catch (error) { showNotice(error.message, true); }
 });
 document.getElementById('upload-avatar').addEventListener('click', async () => {
@@ -745,6 +793,89 @@ function updateFileSelection() {
   });
 }
 
+function setOfficeDirty() {
+  officeDirty = true;
+  document.getElementById('save-status').textContent = t('未保存');
+}
+function spreadsheetColumnName(index) {
+  let name = ''; let value = index + 1;
+  while (value) { const remainder = (value - 1) % 26; name = String.fromCharCode(65 + remainder) + name; value = Math.floor((value - 1) / 26); }
+  return name;
+}
+function renderSpreadsheet() {
+  const documentData = officeDocument;
+  const sheetData = documentData?.sheets.find((sheet) => sheet.name === document.getElementById('sheet-select').value) || documentData?.sheets[0];
+  if (!sheetData) return;
+  const rows = sheetData.rows;
+  const visibleRows = Math.min(150, Math.max(rows.length, rows.length ? 1 : 20));
+  const columnCount = Math.max(5, Math.min(40, rows.reduce((max, row) => Math.max(max, row.length), 0)));
+  const table = document.getElementById('spreadsheet-table');
+  table.replaceChildren();
+  const head = document.createElement('thead'); const headings = document.createElement('tr');
+  const corner = document.createElement('th'); corner.className = 'row-number'; corner.textContent = ''; headings.append(corner);
+  for (let column = 0; column < columnCount; column++) { const th = document.createElement('th'); th.textContent = spreadsheetColumnName(column); headings.append(th); }
+  head.append(headings); table.append(head);
+  const body = document.createElement('tbody');
+  for (let rowIndex = 0; rowIndex < visibleRows; rowIndex++) {
+    const tr = document.createElement('tr'); const rowNumber = document.createElement('th'); rowNumber.className = 'row-number'; rowNumber.textContent = String(rowIndex + 1); tr.append(rowNumber);
+    for (let column = 0; column < columnCount; column++) {
+      const td = document.createElement('td'); const input = document.createElement('input');
+      input.className = 'spreadsheet-cell'; input.value = String(rows[rowIndex]?.[column] ?? ''); input.dataset.row = String(rowIndex); input.dataset.column = String(column);
+      input.addEventListener('input', () => {
+        while (rows.length <= rowIndex) rows.push([]);
+        rows[rowIndex][column] = input.value; setOfficeDirty();
+      });
+      td.append(input); tr.append(td);
+    }
+    body.append(tr);
+  }
+  table.append(body);
+  const limited = sheetData.truncated || rows.length > visibleRows || rows.some((row) => row.length > columnCount);
+  document.getElementById('spreadsheet-note').textContent = limited ? t('表格显示前 150 行和 40 列；其余单元格会保留。') : '';
+  document.getElementById('add-row').disabled = Boolean(sheetData.rowTruncated);
+  document.getElementById('add-column').disabled = Boolean(sheetData.columnTruncated);
+}
+function renderOfficeFile(file) {
+  officeDocument = file; officeHash = file.hash; officeDirty = false;
+  codeEditorShell.hidden = true;
+  document.querySelector('.editor-panel').classList.remove('code-theme');
+  markdownPreview.hidden = true; markdownToggle.hidden = true;
+  document.getElementById('image-preview').hidden = true;
+  document.getElementById('pdf-preview').hidden = true; document.getElementById('pdf-preview').src = 'about:blank';
+  for (const id of ['image-dimensions', 'image-zoom-out', 'image-zoom-label', 'image-fit', 'image-zoom-in']) document.getElementById(id).hidden = true;
+  const officePreview = document.getElementById('office-preview'); officePreview.hidden = false;
+  const spreadsheetView = document.getElementById('spreadsheet-view'); const docxView = document.getElementById('docx-view');
+  spreadsheetView.hidden = file.kind !== 'spreadsheet'; docxView.hidden = file.kind !== 'docx';
+  if (file.kind === 'spreadsheet') {
+    const select = document.getElementById('sheet-select'); select.replaceChildren(...file.sheets.map((sheet) => { const option = document.createElement('option'); option.value = sheet.name; option.textContent = sheet.name; return option; }));
+    select.value = file.sheets[0]?.name || '';
+    renderSpreadsheet();
+  } else {
+    const docxEditor = document.getElementById('docx-editor'); docxEditor.value = file.content;
+  }
+  document.getElementById('save-file').disabled = false;
+  document.getElementById('save-status').textContent = '';
+}
+
+document.getElementById('sheet-select').addEventListener('change', renderSpreadsheet);
+document.getElementById('add-row').addEventListener('click', () => {
+  const sheet = officeDocument?.sheets.find((item) => item.name === document.getElementById('sheet-select').value);
+  if (!sheet) return;
+  sheet.rows.push(Array(Math.max(5, sheet.rows.reduce((max, row) => Math.max(max, row.length), 0))).fill(''));
+  setOfficeDirty(); renderSpreadsheet();
+});
+document.getElementById('add-column').addEventListener('click', () => {
+  const sheet = officeDocument?.sheets.find((item) => item.name === document.getElementById('sheet-select').value);
+  if (!sheet) return;
+  if (!sheet.rows.length) sheet.rows.push([]);
+  sheet.rows.forEach((row) => row.push(''));
+  setOfficeDirty(); renderSpreadsheet();
+});
+document.getElementById('docx-editor').addEventListener('input', (event) => {
+  if (!officeDocument) return;
+  officeDocument.content = event.target.value; setOfficeDirty();
+});
+
 async function loadFile(filePath) {
   if (!await protectUnsavedFile()) return;
   try {
@@ -752,9 +883,12 @@ async function loadFile(filePath) {
     if (isImage) {
       const file = await ipcRenderer.invoke('read-workspace-image', filePath);
       openFile = file.path;
+      officeDocument = null; officeHash = null; officeDirty = false;
+      document.getElementById('office-preview').hidden = true;
       savedContents = '';
       editor.value = '';
       setMarkdownPreview(false);
+      updateCodeHighlight('', '');
       markdownToggle.hidden = true;
       codeEditorShell.hidden = true;
       document.getElementById('pdf-preview').hidden = true;
@@ -783,6 +917,9 @@ async function loadFile(filePath) {
     if (/\.pdf$/i.test(filePath)) {
       const file = await ipcRenderer.invoke('read-workspace-pdf', filePath);
       openFile = file.path; savedContents = ''; editor.value = '';
+      officeDocument = null; officeHash = null; officeDirty = false;
+      document.getElementById('office-preview').hidden = true;
+      updateCodeHighlight('', '');
       codeEditorShell.hidden = true;
       markdownPreview.hidden = true; markdownToggle.hidden = true;
       document.getElementById('image-preview').hidden = true;
@@ -796,14 +933,27 @@ async function loadFile(filePath) {
       updateFileSelection();
       return;
     }
+    if (/\.(?:docx|xlsx|csv|tsv)$/i.test(filePath)) {
+      const file = await ipcRenderer.invoke('read-workspace-office', filePath);
+      openFile = file.path; savedContents = ''; editor.value = '';
+      updateCodeHighlight('', '');
+      renderOfficeFile(file);
+      document.getElementById('editor-path').textContent = file.path;
+      document.getElementById('editor-path').title = file.path;
+      updateFileSelection();
+      return;
+    }
     const file = await ipcRenderer.invoke('read-workspace-file', filePath);
     openFile = file.path;
+    officeDocument = null; officeHash = null; officeDirty = false;
+    document.getElementById('office-preview').hidden = true;
     updateFileSelection();
     savedContents = file.content;
     editor.value = file.content;
     updateCodeHighlight(file.path, file.content);
     codeEditorShell.hidden = false;
     document.getElementById('image-preview').hidden = true;
+    document.getElementById('office-preview').hidden = true;
     document.getElementById('pdf-preview').hidden = true;
     document.getElementById('pdf-preview').src = 'about:blank';
     document.getElementById('image-zoom-out').hidden = true;
@@ -828,6 +978,7 @@ function updateCodeHighlight(filePath, source) {
   const enabled = codeExtensions.has(extension);
   codeEditorShell.classList.toggle('highlight-enabled', enabled);
   codeEditorShell.classList.toggle('code-theme', enabled);
+  document.querySelector('.editor-panel').classList.toggle('code-theme', enabled);
   const pattern = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|^\s*#.*$|\b\d+(?:\.\d+)?\b|\b[A-Za-z_$][\w$]*\b)/gm;
   let output = ''; let cursor = 0; let match;
   while ((match = pattern.exec(source))) {
@@ -885,7 +1036,11 @@ document.getElementById('image-fit').addEventListener('click', () => { imageFit 
 function setMarkdownPreview(enabled) {
   if (enabled) window.renderMurasameMarkdown(markdownPreview, editor.value);
   markdownPreview.hidden = !enabled;
-  codeEditorShell.hidden = enabled;
+  const imageVisible = !document.getElementById('image-preview').hidden;
+  const pdfVisible = !document.getElementById('pdf-preview').hidden;
+  const canShowEditor = !enabled && !officeDocument && !imageVisible && !pdfVisible;
+  codeEditorShell.hidden = !canShowEditor;
+  document.querySelector('.editor-panel').classList.toggle('code-theme', canShowEditor && codeEditorShell.classList.contains('highlight-enabled'));
   markdownToggle.textContent = t(enabled ? '查看源码' : '渲染预览');
   markdownToggle.setAttribute('aria-pressed', String(enabled));
 }

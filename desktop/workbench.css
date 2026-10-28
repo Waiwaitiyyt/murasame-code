@@ -116,7 +116,8 @@ h1 { margin: 0 0 7px; color: var(--text); font-family: "SimSun", serif; font-siz
 #code-highlight { position: absolute; inset: 0; overflow: auto; margin: 0; padding: 18px 20px; color: var(--text); background: transparent; font: 12px/1.72 ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 2; white-space: pre; pointer-events: none; }
 .code-editor-shell:not(.highlight-enabled) #code-highlight { display: none; }
 #code-highlight code { font: inherit; }
-.code-editor-shell.highlight-enabled.code-theme { background: #1e1e1e; }
+.editor-panel.code-theme { background: transparent; }
+.code-editor-shell.highlight-enabled.code-theme { background: rgba(30, 30, 30, var(--code-editor-opacity, .82)); }
 .code-editor-shell.highlight-enabled.code-theme #code-highlight { color: #d4d4d4; }
 .code-editor-shell.highlight-enabled.code-theme #file-editor { color: transparent; -webkit-text-fill-color: transparent; caret-color: #aeafad; text-shadow: none; }
 .code-editor-shell.highlight-enabled.code-theme #file-editor::selection { background: rgba(38, 79, 120, .72); }
@@ -128,6 +129,24 @@ h1 { margin: 0 0 7px; color: var(--text); font-family: "SimSun", serif; font-siz
 .syntax-function { color: #dcdcaa; }
 .syntax-preprocessor { color: #9b9b9b; }
 .pdf-preview { min-width: 0; min-height: 0; flex: 1; width: 100%; border: 0; background: #525659; }
+.office-preview { min-width: 0; min-height: 0; flex: 1; overflow: hidden; color: var(--text); background: var(--surface); }
+.office-preview[hidden], #spreadsheet-view[hidden], #docx-view[hidden] { display: none; }
+#spreadsheet-view { min-width: 0; height: 100%; display: flex; flex-direction: column; }
+.office-toolbar { min-height: 42px; display: flex; align-items: center; gap: 7px; padding: 5px 10px; border-bottom: 1px solid var(--border); }
+.office-toolbar select { max-width: 220px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 7px; color: var(--text); background: var(--surface-raised); font-size: 11px; }
+.office-toolbar button { padding: 5px 8px; font-size: 10px; }
+#spreadsheet-note { margin-left: auto; color: var(--text-muted); font-size: 10px; }
+.spreadsheet-scroll { min-height: 0; flex: 1; overflow: auto; }
+#spreadsheet-table { min-width: 100%; border-collapse: separate; border-spacing: 0; font: 11px/1.4 "Segoe UI", "Microsoft YaHei", sans-serif; }
+#spreadsheet-table th, #spreadsheet-table td { min-width: 98px; height: 29px; padding: 0; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+#spreadsheet-table thead th { position: sticky; z-index: 2; top: 0; color: var(--text-soft); background: var(--surface-muted); text-align: center; font-weight: 600; }
+#spreadsheet-table .row-number { position: sticky; z-index: 1; left: 0; min-width: 44px; width: 44px; color: var(--text-muted); background: var(--surface-muted); text-align: center; font-weight: 500; }
+#spreadsheet-table thead .row-number { z-index: 3; }
+.spreadsheet-cell { width: 100%; height: 28px; padding: 4px 7px; border: 1px solid transparent; border-radius: 0; outline: 0; color: var(--text); background: transparent; font: inherit; }
+.spreadsheet-cell:focus { position: relative; z-index: 1; border-color: var(--studio-primary); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--studio-primary); }
+#docx-view { height: 100%; min-height: 0; display: flex; flex-direction: column; padding: 12px; }
+.office-warning { flex: none; margin: 0 0 10px; padding: 9px 11px; border: 1px solid color-mix(in srgb, #d89a42 40%, var(--border)); border-radius: 8px; color: var(--text-soft); background: color-mix(in srgb, #f4ce84 19%, var(--surface)); font-size: 11px; line-height: 1.5; }
+#docx-editor { min-height: 0; flex: 1; resize: none; padding: 14px; border: 1px solid var(--border); border-radius: 8px; outline: 0; color: var(--text); background: var(--surface-raised); font: 13px/1.75 "Segoe UI", "Microsoft YaHei", sans-serif; }
 .markdown-preview { flex: 1; overflow: auto; padding: 18px 24px; color: var(--text); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .image-preview { min-width: 0; min-height: 0; flex: 1; overflow: auto; background-color: #e8e8e8; background-image: linear-gradient(45deg, #d6d6d6 25%, transparent 25%), linear-gradient(-45deg, #d6d6d6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d6d6d6 75%), linear-gradient(-45deg, transparent 75%, #d6d6d6 75%); background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0; }
 .image-canvas { min-width: 100%; min-height: 100%; display: grid; place-items: center; padding: 24px; }

@@ -51,6 +51,7 @@ body { display: grid; grid-template-columns: 216px minmax(0, 1fr); grid-template
 .studio-wordmark { display: inline-block; margin-left: 5px; color: var(--green-strong); font: 700 9px/1.2 ui-monospace, monospace; letter-spacing: .14em; vertical-align: 2px; }
 .brand small { font-size: 10px; }
 .top-actions button { border-color: var(--border); font-weight: 600; }
+#background-toggle { color: var(--text-soft); background: var(--surface-muted); }
 #new-session { color: var(--studio-primary-text); background: var(--studio-primary); border-color: var(--studio-primary); }
 #new-session:hover { color: var(--studio-primary-text); filter: brightness(.9); background: var(--studio-primary); }
 .workbench-nav { z-index: 3; grid-column: 1; grid-row: 2; min-width: 0; height: auto; display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 18px 12px 14px; border-right: 1px solid var(--border); border-bottom: 0; background: var(--surface-muted); }
@@ -81,6 +82,13 @@ body { display: grid; grid-template-columns: 216px minmax(0, 1fr); grid-template
 #studio-settings { border-color: var(--border); background: var(--surface); }
 #studio-settings[aria-expanded="true"] { color: var(--studio-selected-text); border-color: var(--purple); background: var(--studio-selected); }
 .app-menu { position: fixed; z-index: 50; top: auto; bottom: 14px; left: 226px; max-height: min(690px, calc(100vh - 82px)); }
+.background-menu { position: fixed; z-index: 51; top: 70px; right: 16px; width: min(360px, calc(100vw - 32px)); max-height: calc(100vh - 86px); overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface-raised); box-shadow: var(--shadow); backdrop-filter: blur(22px); }
+.background-menu[hidden] { display: none; }
+.background-menu .background-options { grid-template-columns: 1fr; }
+.opacity-setting { display: block; margin-top: 14px; padding: 12px 8px 3px; border-top: 1px solid var(--border); color: var(--text-soft); font-size: 11px; }
+.opacity-setting > span { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.opacity-setting b { color: var(--purple-strong); }
+.opacity-setting input { width: 100%; accent-color: var(--green-strong); }
 main { grid-column: 2; grid-row: 2; min-width: 0; overflow: hidden; }
 #agent { min-height: 0; padding-top: 10px; }
 .welcome { width: calc(100% - 44px); max-width: 1000px; min-height: 116px; gap: 16px; margin: 12px auto 6px; padding: 18px 22px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: 0 8px 24px rgba(35, 63, 45, .05); }
