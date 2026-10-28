@@ -76,6 +76,8 @@ let selectedSlashCommand = 0;
 const send = document.getElementById('send');
 const status = document.getElementById('agent-status');
 const editor = document.getElementById('file-editor');
+const codeEditorShell = document.getElementById('code-editor-shell');
+const codeHighlight = document.getElementById('code-highlight');
 const markdownToggle = document.getElementById('markdown-toggle');
 const markdownPreview = document.getElementById('markdown-preview');
 const fileList = document.getElementById('file-list');
@@ -472,6 +474,9 @@ async function chooseWorkspace() {
     setMarkdownPreview(false);
     markdownToggle.hidden = true;
     document.getElementById('image-preview').hidden = true;
+    document.getElementById('pdf-preview').hidden = true;
+    document.getElementById('pdf-preview').src = 'about:blank';
+    updateCodeHighlight('', '');
     for (const id of ['image-dimensions', 'image-zoom-out', 'image-zoom-label', 'image-fit', 'image-zoom-in']) document.getElementById(id).hidden = true;
     updateFileSelection();
     await refreshWorkspace();
@@ -751,7 +756,9 @@ async function loadFile(filePath) {
       editor.value = '';
       setMarkdownPreview(false);
       markdownToggle.hidden = true;
-      document.getElementById('file-editor').hidden = true;
+      codeEditorShell.hidden = true;
+      document.getElementById('pdf-preview').hidden = true;
+      document.getElementById('pdf-preview').src = 'about:blank';
       document.getElementById('image-preview').hidden = false;
       document.getElementById('image-zoom-out').hidden = false;
       document.getElementById('image-zoom-label').hidden = false;
@@ -773,13 +780,32 @@ async function loadFile(filePath) {
       updateFileSelection();
       return;
     }
+    if (/\.pdf$/i.test(filePath)) {
+      const file = await ipcRenderer.invoke('read-workspace-pdf', filePath);
+      openFile = file.path; savedContents = ''; editor.value = '';
+      codeEditorShell.hidden = true;
+      markdownPreview.hidden = true; markdownToggle.hidden = true;
+      document.getElementById('image-preview').hidden = true;
+      for (const id of ['image-dimensions', 'image-zoom-out', 'image-zoom-label', 'image-fit', 'image-zoom-in']) document.getElementById(id).hidden = true;
+      document.getElementById('pdf-preview').hidden = false;
+      document.getElementById('pdf-preview').src = file.url;
+      document.getElementById('save-file').disabled = true;
+      document.getElementById('save-status').textContent = '';
+      document.getElementById('editor-path').textContent = file.path;
+      document.getElementById('editor-path').title = file.path;
+      updateFileSelection();
+      return;
+    }
     const file = await ipcRenderer.invoke('read-workspace-file', filePath);
     openFile = file.path;
     updateFileSelection();
     savedContents = file.content;
     editor.value = file.content;
-    document.getElementById('file-editor').hidden = false;
+    updateCodeHighlight(file.path, file.content);
+    codeEditorShell.hidden = false;
     document.getElementById('image-preview').hidden = true;
+    document.getElementById('pdf-preview').hidden = true;
+    document.getElementById('pdf-preview').src = 'about:blank';
     document.getElementById('image-zoom-out').hidden = true;
     document.getElementById('image-zoom-label').hidden = true;
     document.getElementById('image-fit').hidden = true;
@@ -793,6 +819,34 @@ async function loadFile(filePath) {
     document.getElementById('save-status').textContent = '';
   } catch (error) { window.alert(t(error.message)); }
 }
+const codeKeywords = new Set('alignas alignof asm auto bool break case catch char class const constexpr continue decltype default delete do double else enum explicit export extern false float for friend goto if inline int long mutable namespace new noexcept nullptr operator private protected public register reinterpret_cast return short signed sizeof static_assert static_cast struct switch template this thread_local throw true try typedef typeid typename union unsigned using virtual void volatile wchar_t while async await as assert def del elif except finally from global import lambda nonlocal pass raise with yield function let var interface implements package super throws abstract final native synchronized transient instanceof debugger typeof in of get set'.split(/\s+/));
+const codeTypes = new Set('int float double char bool void string auto size_t uint32_t uint64_t int32_t int64_t vector map set list pair optional unique_ptr shared_ptr std FILE'.split(/\s+/));
+function escapeCodeHtml(value) { return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]); }
+function updateCodeHighlight(filePath, source) {
+  const extension = String(filePath).split('.').pop().toLowerCase();
+  const codeExtensions = new Set(['c', 'h', 'cc', 'hh', 'cpp', 'cxx', 'hpp', 'hxx', 'ino', 'cs', 'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'java', 'py', 'go', 'rs', 'php', 'swift', 'kt', 'json', 'css', 'html', 'xml', 'sh', 'sql']);
+  const enabled = codeExtensions.has(extension);
+  codeEditorShell.classList.toggle('highlight-enabled', enabled);
+  codeEditorShell.classList.toggle('code-theme', enabled);
+  const pattern = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|^\s*#.*$|\b\d+(?:\.\d+)?\b|\b[A-Za-z_$][\w$]*\b)/gm;
+  let output = ''; let cursor = 0; let match;
+  while ((match = pattern.exec(source))) {
+    output += escapeCodeHtml(source.slice(cursor, match.index));
+    const token = match[0]; let kind = '';
+    if (token.startsWith('//') || token.startsWith('/*')) kind = 'comment';
+    else if (token.startsWith('"') || token.startsWith("'") || token.startsWith('`')) kind = 'string';
+    else if (/^\s*#/.test(token)) kind = 'preprocessor';
+    else if (/^\d/.test(token)) kind = 'number';
+    else if (codeKeywords.has(token)) kind = 'keyword';
+    else if (codeTypes.has(token)) kind = 'type';
+    else if (/^\s*\(/.test(source.slice(pattern.lastIndex))) kind = 'function';
+    output += kind ? `<span class="syntax-${kind}">${escapeCodeHtml(token)}</span>` : escapeCodeHtml(token);
+    cursor = pattern.lastIndex;
+  }
+  output += escapeCodeHtml(source.slice(cursor));
+  codeHighlight.innerHTML = `<code>${output || ' '}</code>`;
+}
+
 function updateImageZoom() {
   const image = document.getElementById('workspace-image');
   const canvas = document.getElementById('image-canvas');
@@ -801,20 +855,46 @@ function updateImageZoom() {
   if (imageFit) { image.style.width = ''; image.style.height = ''; }
   else { image.style.width = `${Math.round(image.naturalWidth * imageZoom)}px`; image.style.height = `${Math.round(image.naturalHeight * imageZoom)}px`; }
 }
-document.getElementById('image-zoom-out').addEventListener('click', () => { imageFit = false; imageZoom = Math.max(.1, (imageFit ? 1 : imageZoom) / 1.25); updateImageZoom(); });
-document.getElementById('image-zoom-in').addEventListener('click', () => { imageFit = false; imageZoom = Math.min(8, (imageFit ? 1 : imageZoom) * 1.25); updateImageZoom(); });
+function stepImageZoom(factor) {
+  const image = document.getElementById('workspace-image');
+  if (!image.naturalWidth) return;
+  const currentScale = imageFit ? image.getBoundingClientRect().width / image.naturalWidth : imageZoom;
+  imageZoom = Math.max(.01, Math.min(8, currentScale * factor));
+  imageFit = false; updateImageZoom();
+}
+document.getElementById('image-preview').addEventListener('wheel', (event) => {
+  if (!event.deltaY) return;
+  event.preventDefault();
+  const preview = event.currentTarget; const image = document.getElementById('workspace-image');
+  if (!image.naturalWidth) return;
+  const bounds = image.getBoundingClientRect(); const viewport = preview.getBoundingClientRect();
+  const ratioX = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+  const ratioY = Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height));
+  const scale = imageFit ? bounds.width / image.naturalWidth : imageZoom;
+  imageZoom = Math.max(.01, Math.min(8, scale * (event.deltaY < 0 ? 1.15 : 1 / 1.15)));
+  imageFit = false; updateImageZoom();
+  requestAnimationFrame(() => {
+    const next = image.getBoundingClientRect();
+    preview.scrollLeft += next.left - bounds.left + ratioX * next.width - (event.clientX - viewport.left);
+    preview.scrollTop += next.top - bounds.top + ratioY * next.height - (event.clientY - viewport.top);
+  });
+}, { passive: false });
+document.getElementById('image-zoom-out').addEventListener('click', () => stepImageZoom(1 / 1.25));
+document.getElementById('image-zoom-in').addEventListener('click', () => stepImageZoom(1.25));
 document.getElementById('image-fit').addEventListener('click', () => { imageFit = true; imageZoom = 1; updateImageZoom(); });
 function setMarkdownPreview(enabled) {
   if (enabled) window.renderMurasameMarkdown(markdownPreview, editor.value);
   markdownPreview.hidden = !enabled;
-  editor.hidden = enabled;
+  codeEditorShell.hidden = enabled;
   markdownToggle.textContent = t(enabled ? '查看源码' : '渲染预览');
   markdownToggle.setAttribute('aria-pressed', String(enabled));
 }
 markdownToggle.addEventListener('click', () => setMarkdownPreview(markdownPreview.hidden));
 editor.addEventListener('input', () => {
+  updateCodeHighlight(document.getElementById('editor-path').textContent, editor.value);
   document.getElementById('save-status').textContent = editor.value === savedContents ? '' : t('未保存');
 });
+editor.addEventListener('scroll', () => { codeHighlight.scrollTop = editor.scrollTop; codeHighlight.scrollLeft = editor.scrollLeft; });
 document.getElementById('save-file').addEventListener('click', async () => {
   if (await saveOpenFile()) setTimeout(() => { if (document.getElementById('save-status').textContent === t('已保存')) document.getElementById('save-status').textContent = ''; }, 1600);
 });

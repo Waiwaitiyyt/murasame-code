@@ -2,6 +2,7 @@
 const workbenchTranslations = {
   zh: { '文件菜单': '文件' },
   en: {
+    'PDF 阅读器': 'PDF Reader',
     '无法解码这张图片。': 'This image could not be decoded.',
     '适应窗口': 'Fit to Window', '缩小图片': 'Zoom Out', '放大图片': 'Zoom In',
     '本次任务': 'this task',
@@ -34,6 +35,7 @@ const workbenchTranslations = {
     '切换模型名称…': 'Change model…', '打开完整模型设置': 'Open model settings', '输入模型名称': 'Enter model name', '自动': 'Automatic', '手动': 'Manual', '完全访问': 'Full Access', '危险操作会请求确认': 'Ask before risky operations', '每次工具调用都请求确认': 'Ask before every tool call', '不弹出工具确认': 'Never ask for tool confirmation', '清除已记住的授权': 'Clear remembered permissions',
   },
   ja: {
+    'PDF 阅读器': 'PDF リーダー',
     '无法解码这张图片。': 'この画像をデコードできませんでした。',
     '适应窗口': 'ウィンドウに合わせる', '缩小图片': '縮小', '放大图片': '拡大',
     '本次任务': '今回のタスク',
