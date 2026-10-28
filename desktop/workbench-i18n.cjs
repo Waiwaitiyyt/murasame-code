@@ -2,6 +2,8 @@
 const workbenchTranslations = {
   zh: { '文件菜单': '文件' },
   en: {
+    '无法解码这张图片。': 'This image could not be decoded.',
+    '适应窗口': 'Fit to Window', '缩小图片': 'Zoom Out', '放大图片': 'Zoom In',
     '本次任务': 'this task',
     '任务失败：': 'Task failed: ', '命令退出，代码：': 'Command exited with code: ',
     '重命名': 'Rename', '删除': 'Delete', '筛选文件…': 'Filter files…', '本次任务的文件变更': 'Files changed in this task', '保存并继续': 'Save and continue', '放弃修改': 'Discard changes', '文件有未保存的修改': 'This file has unsaved changes', '输入会话名称': 'Enter a session name', '删除当前会话及其记录？': 'Delete this session and its history?', '至少保留一个会话。': 'Keep at least one session.', '请等当前任务完成后再切换会话。': 'Wait for the current task to finish before switching sessions.', '请等当前任务完成后再删除会话。': 'Wait for the current task to finish before deleting a session.', '找不到这个会话。': 'Session not found.', '未命名会话': 'Untitled session', '新会话': 'New session', '默认会话': 'Default session', '撤销此文件': 'Revert this file', '恢复任务前版本？': 'Restore this file to its pre-task version?', '没有已跟踪文件的差异；新增文件仍列在上方。': 'No tracked-file diff; new files are listed above.', '执行中：': 'Working: ', '执行工具：': 'Running tool: ', '任务已停止。': 'Task stopped.', '正在停止…': 'Stopping…', '执行中': 'Working', '新增': 'Added', '删除': 'Deleted', '修改': 'Modified',
@@ -32,6 +34,8 @@ const workbenchTranslations = {
     '切换模型名称…': 'Change model…', '打开完整模型设置': 'Open model settings', '输入模型名称': 'Enter model name', '自动': 'Automatic', '手动': 'Manual', '完全访问': 'Full Access', '危险操作会请求确认': 'Ask before risky operations', '每次工具调用都请求确认': 'Ask before every tool call', '不弹出工具确认': 'Never ask for tool confirmation', '清除已记住的授权': 'Clear remembered permissions',
   },
   ja: {
+    '无法解码这张图片。': 'この画像をデコードできませんでした。',
+    '适应窗口': 'ウィンドウに合わせる', '缩小图片': '縮小', '放大图片': '拡大',
     '本次任务': '今回のタスク',
     '任务失败：': 'タスク失敗：', '命令退出，代码：': 'コマンド終了コード：',
     '重命名': '名前を変更', '删除': '削除', '筛选文件…': 'ファイルを絞り込む…', '本次任务的文件变更': '今回のタスクで変更したファイル', '保存并继续': '保存して続行', '放弃修改': '変更を破棄', '文件有未保存的修改': '未保存の変更があります', '输入会话名称': '会話名を入力', '删除当前会话及其记录？': 'この会話と履歴を削除しますか？', '至少保留一个会话。': '会話を1つ以上残してください。', '请等当前任务完成后再切换会话。': '作業終了後に会話を切り替えてください。', '请等当前任务完成后再删除会话。': '作業終了後に会話を削除してください。', '找不到这个会话。': '会話が見つかりません。', '未命名会话': '無題の会話', '新会话': '新しい会話', '默认会话': '既定の会話', '撤销此文件': 'このファイルを元に戻す', '恢复任务前版本？': 'タスク前の状態に戻しますか？', '没有已跟踪文件的差异；新增文件仍列在上方。': '追跡中の差分はありません。新規ファイルは上に表示されています。', '执行中：': '実行中：', '执行工具：': 'ツール実行中：', '任务已停止。': 'タスクを停止しました。', '正在停止…': '停止中…', '新增': '追加', '删除': '削除', '修改': '変更',

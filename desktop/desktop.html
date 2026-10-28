@@ -20,7 +20,7 @@
     <div class="brand-group">
       <div class="brand"><img src="assets/icon.png" alt="" aria-hidden="true"><div><b>丛雨code <span class="studio-wordmark">STUDIO</span></b><small>千恋＊万花 · Murasame Code</small></div></div>
     </div>
-    <div class="top-actions"><button id="new-session">新建会话</button><button id="pet-mode">收进桌宠</button><button id="tray-mode" title="隐藏到托盘">—</button></div>
+    <div class="top-actions"><button id="pet-mode">收进桌宠</button><button id="tray-mode" title="隐藏到托盘">—</button></div>
   </header>
   <aside id="app-menu" class="app-menu" role="dialog" aria-label="工作台设置" hidden>
       <div class="menu-title">工作台设置</div>
@@ -57,11 +57,14 @@
       <button class="tab" data-page="terminal" title="终端"><svg class="nav-icon" aria-hidden="true"><use href="#icon-terminal"></use></svg><span class="nav-label">终端</span></button>
     </div>
     <div class="nav-workspace"><span class="workspace-label">工作目录</span><button id="workspace" title="选择目录"><svg class="nav-icon" aria-hidden="true"><use href="#icon-folder"></use></svg><span id="workspace-path">选择目录</span></button></div>
+    <section class="session-sidebar" aria-label="工作区会话">
+      <div class="session-sidebar-heading"><span>会话</span><button id="new-session" type="button" title="新建会话" aria-label="新建会话">+</button></div>
+      <div id="session-list" class="session-card-list"></div>
+    </section>
     <div class="nav-footer"><span class="nav-lore" aria-hidden="true">✿ <span>千恋＊万花</span></span><button id="studio-settings" type="button" aria-controls="app-menu" aria-expanded="false" title="工作台设置"><svg class="nav-icon" aria-hidden="true"><use href="#icon-settings"></use></svg><span class="nav-label">工作台设置</span></button></div>
   </nav>
   <main>
     <section id="agent" class="page active">
-      <div class="session-toolbar"><select id="session-select" aria-label="当前会话"></select><button id="rename-session" type="button">重命名</button><button id="delete-session" type="button">删除</button></div>
       <div class="welcome"><div class="seal"><img id="welcome-avatar" src="assets/icon.png" alt="丛雨头像"></div><div class="welcome-copy"><span class="welcome-kicker">MURASAME / WORKSPACE</span><h1>汝の願い、聞き届けよう。</h1><p>丛雨会在选定的工作目录里阅读和修改项目。</p></div><span class="welcome-flower" aria-hidden="true">✿</span></div>
       <div id="conversation" class="conversation"><div class="hint">试试：<button class="suggestion">阅读项目结构并总结</button><button class="suggestion">检查当前项目中的问题</button></div></div>
       <details id="change-review" class="change-review" hidden><summary><span>本次任务的文件变更</span><span id="change-count"></span></summary><div id="change-list"></div><pre id="change-diff"></pre></details>
@@ -69,7 +72,7 @@
     </section>
     <section id="files" class="page workbench-page">
       <aside class="file-sidebar"><div class="panel-heading"><b>项目文件</b><button id="refresh-files" title="刷新">↻</button></div><input id="file-search" type="search" placeholder="筛选文件…" aria-label="筛选文件"><div id="file-breadcrumb"></div><div id="file-list"></div></aside>
-      <div class="editor-panel"><div class="panel-heading"><span id="editor-path">选择文件以查看</span><div><button id="markdown-toggle" type="button" hidden aria-pressed="false">渲染预览</button><span id="save-status"></span><button id="save-file" disabled>保存</button></div></div><textarea id="file-editor" spellcheck="false" placeholder="从左侧选择文本文件"></textarea><div id="markdown-preview" class="markdown-preview" hidden></div></div>
+      <div class="editor-panel"><div class="panel-heading"><span id="editor-path">选择文件以查看</span><div><span id="image-dimensions" hidden></span><button id="image-zoom-out" type="button" hidden aria-label="缩小图片">−</button><span id="image-zoom-label" hidden>适应窗口</span><button id="image-fit" type="button" hidden>适应窗口</button><button id="image-zoom-in" type="button" hidden aria-label="放大图片">+</button><button id="markdown-toggle" type="button" hidden aria-pressed="false">渲染预览</button><span id="save-status"></span><button id="save-file" disabled>保存</button></div></div><textarea id="file-editor" spellcheck="false" placeholder="从左侧选择文本文件"></textarea><div id="markdown-preview" class="markdown-preview" hidden></div><div id="image-preview" class="image-preview" hidden><div id="image-canvas" class="image-canvas"><img id="workspace-image" alt=""></div></div></div>
     </section>
     <section id="terminal" class="page terminal-page">
       <div class="terminal-heading"><div><b>工作区终端</b><span id="terminal-cwd"></span></div><button id="clear-terminal">清屏</button></div>

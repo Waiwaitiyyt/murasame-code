@@ -14,13 +14,15 @@ let terminalHistory = [];
 let terminalHistoryIndex = 0;
 let workspaceEntries = [];
 let agentStopRequested = false;
+let imageFit = true;
+let imageZoom = 1;
 const originalUiText = new WeakMap();
 const originalUiAttributes = new WeakMap();
 const t = (key) => window.workbenchTranslate(uiLanguage, key);
 function translateWorkbench() {
   document.documentElement.lang = { zh: 'zh-CN', en: 'en', ja: 'ja' }[uiLanguage];
   document.title = t('丛雨code工作台');
-  const staticRoots = ['.topbar', '#app-menu', '.workbench-nav', '.session-toolbar', '.welcome', '.composer', '#change-review', '.file-sidebar', '.editor-panel > .panel-heading', '#file-editor', '.terminal-heading', '#terminal-form', '.app-dialog'];
+  const staticRoots = ['.topbar', '#app-menu', '.workbench-nav', '.welcome', '.composer', '#change-review', '.file-sidebar', '.editor-panel > .panel-heading', '#file-editor', '.terminal-heading', '#terminal-form', '.app-dialog'];
   for (const selector of staticRoots) {
     document.querySelectorAll(selector).forEach((root) => {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -157,22 +159,35 @@ async function refreshWorkspace() {
 async function refreshSession() {
   try {
     const data = await ipcRenderer.invoke('get-session');
-    sessionState = { activeId: data.activeId, sessions: data.sessions };
-    const select = document.getElementById('session-select');
-    select.replaceChildren(...data.sessions.map((item) => { const option = document.createElement('option'); option.value = item.id; option.textContent = item.name; return option; }));
-    select.value = data.activeId;
-    document.getElementById('delete-session').disabled = data.sessions.length < 2;
+    renderSessionCards(data);
     renderSession(data.messages);
   }
   catch (error) { status.textContent = error.message; }
 }
 async function refreshSessionIndex() {
   const data = await ipcRenderer.invoke('get-session-index');
+  renderSessionCards(data);
+}
+function renderSessionCards(data) {
   sessionState = { activeId: data.activeId, sessions: data.sessions };
-  const select = document.getElementById('session-select');
-  select.replaceChildren(...data.sessions.map((item) => { const option = document.createElement('option'); option.value = item.id; option.textContent = item.name; return option; }));
-  select.value = data.activeId;
-  document.getElementById('delete-session').disabled = data.sessions.length < 2;
+  const list = document.getElementById('session-list');
+  list.replaceChildren();
+  for (const session of data.sessions) {
+    const card = document.createElement('div');
+    card.className = `session-card${session.id === data.activeId ? ' active' : ''}`;
+    const select = document.createElement('button');
+    select.type = 'button'; select.className = 'session-card-select'; select.dataset.sessionId = session.id;
+    select.textContent = session.name; select.title = session.name;
+    select.setAttribute('aria-current', String(session.id === data.activeId));
+    const rename = document.createElement('button');
+    rename.type = 'button'; rename.className = 'session-card-action'; rename.dataset.sessionAction = 'rename'; rename.dataset.sessionId = session.id;
+    rename.textContent = '···'; rename.title = t('重命名'); rename.setAttribute('aria-label', `${t('重命名')}: ${session.name}`);
+    const remove = document.createElement('button');
+    remove.type = 'button'; remove.className = 'session-card-action danger-action'; remove.dataset.sessionAction = 'delete'; remove.dataset.sessionId = session.id;
+    remove.textContent = '×'; remove.title = t('删除'); remove.setAttribute('aria-label', `${t('删除')}: ${session.name}`);
+    remove.disabled = data.sessions.length < 2;
+    card.append(select, rename, remove); list.append(card);
+  }
 }
 
 function setPage(pageId) {
@@ -456,6 +471,8 @@ async function chooseWorkspace() {
     document.getElementById('save-status').textContent = '';
     setMarkdownPreview(false);
     markdownToggle.hidden = true;
+    document.getElementById('image-preview').hidden = true;
+    for (const id of ['image-dimensions', 'image-zoom-out', 'image-zoom-label', 'image-fit', 'image-zoom-in']) document.getElementById(id).hidden = true;
     updateFileSelection();
     await refreshWorkspace();
   }
@@ -567,23 +584,32 @@ document.getElementById('new-session').addEventListener('click', async () => {
     prompt.focus();
   } catch (error) { showNotice(error.message, true); }
 });
-document.getElementById('session-select').addEventListener('change', async (event) => {
-  const nextId = event.target.value;
-  if (!await protectUnsavedFile()) { event.target.value = sessionState.activeId; return; }
-  try { await ipcRenderer.invoke('select-session', nextId); currentAnswer = null; await refreshSession(); }
-  catch (error) { showNotice(error.message, true); }
-});
-document.getElementById('rename-session').addEventListener('click', async () => {
-  const active = sessionState.sessions.find((item) => item.id === sessionState.activeId);
-  const name = window.prompt(t('输入会话名称'), active?.name || '');
-  if (name === null) return;
-  try { await ipcRenderer.invoke('rename-session', sessionState.activeId, name); await refreshSession(); }
-  catch (error) { showNotice(error.message, true); }
-});
-document.getElementById('delete-session').addEventListener('click', async () => {
-  if (!window.confirm(t('删除当前会话及其记录？'))) return;
-  try { await ipcRenderer.invoke('delete-session', sessionState.activeId); currentAnswer = null; await refreshSession(); }
-  catch (error) { showNotice(error.message, true); }
+document.getElementById('session-list').addEventListener('click', async (event) => {
+  const action = event.target.closest('[data-session-action]');
+  const select = event.target.closest('.session-card-select');
+  const id = action?.dataset.sessionId || select?.dataset.sessionId;
+  if (!id) return;
+  try {
+    if (action?.dataset.sessionAction === 'rename') {
+      const active = sessionState.sessions.find((item) => item.id === id);
+      const name = window.prompt(t('输入会话名称'), active?.name || '');
+      if (name === null) return;
+      await ipcRenderer.invoke('rename-session', id, name);
+      await refreshSessionIndex(); return;
+    }
+    if (action?.dataset.sessionAction === 'delete') {
+      const item = sessionState.sessions.find((entry) => entry.id === id);
+      if (!window.confirm(`${t('删除当前会话及其记录？')}\n${item?.name || ''}`)) return;
+      await ipcRenderer.invoke('delete-session', id);
+      if (id === sessionState.activeId) { currentAnswer = null; await refreshSession(); }
+      else await refreshSessionIndex();
+      return;
+    }
+    if (select && id !== sessionState.activeId) {
+      if (!await protectUnsavedFile()) return;
+      await ipcRenderer.invoke('select-session', id); currentAnswer = null; await refreshSession();
+    }
+  } catch (error) { showNotice(error.message, true); }
 });
 
 document.querySelectorAll('.suggestion').forEach((button) => button.addEventListener('click', () => { prompt.value = button.textContent; prompt.focus(); }));
@@ -717,11 +743,48 @@ function updateFileSelection() {
 async function loadFile(filePath) {
   if (!await protectUnsavedFile()) return;
   try {
+    const isImage = /\.(?:png|jpe?g|gif|webp|bmp|ico|svg)$/i.test(filePath);
+    if (isImage) {
+      const file = await ipcRenderer.invoke('read-workspace-image', filePath);
+      openFile = file.path;
+      savedContents = '';
+      editor.value = '';
+      setMarkdownPreview(false);
+      markdownToggle.hidden = true;
+      document.getElementById('file-editor').hidden = true;
+      document.getElementById('image-preview').hidden = false;
+      document.getElementById('image-zoom-out').hidden = false;
+      document.getElementById('image-zoom-label').hidden = false;
+      document.getElementById('image-fit').hidden = false;
+      document.getElementById('image-zoom-in').hidden = false;
+      document.getElementById('image-dimensions').hidden = false;
+      document.getElementById('save-file').disabled = true;
+      document.getElementById('save-status').textContent = '';
+      const image = document.getElementById('workspace-image');
+      image.onload = () => {
+        document.getElementById('image-dimensions').textContent = `${image.naturalWidth} × ${image.naturalHeight}`;
+        imageFit = true; imageZoom = 1; updateImageZoom();
+      };
+      image.onerror = () => { document.getElementById('image-dimensions').textContent = t('无法解码这张图片。'); };
+      image.src = `data:${file.mimeType};base64,${file.data}`;
+      image.alt = file.path;
+      document.getElementById('editor-path').textContent = file.path;
+      document.getElementById('editor-path').title = file.path;
+      updateFileSelection();
+      return;
+    }
     const file = await ipcRenderer.invoke('read-workspace-file', filePath);
     openFile = file.path;
     updateFileSelection();
     savedContents = file.content;
     editor.value = file.content;
+    document.getElementById('file-editor').hidden = false;
+    document.getElementById('image-preview').hidden = true;
+    document.getElementById('image-zoom-out').hidden = true;
+    document.getElementById('image-zoom-label').hidden = true;
+    document.getElementById('image-fit').hidden = true;
+    document.getElementById('image-zoom-in').hidden = true;
+    document.getElementById('image-dimensions').hidden = true;
     setMarkdownPreview(false);
     markdownToggle.hidden = !/\.md(?:own)?$/i.test(file.path);
     document.getElementById('editor-path').textContent = file.path;
@@ -730,6 +793,17 @@ async function loadFile(filePath) {
     document.getElementById('save-status').textContent = '';
   } catch (error) { window.alert(t(error.message)); }
 }
+function updateImageZoom() {
+  const image = document.getElementById('workspace-image');
+  const canvas = document.getElementById('image-canvas');
+  document.getElementById('image-zoom-label').textContent = imageFit ? t('适应窗口') : `${Math.round(imageZoom * 100)}%`;
+  canvas.classList.toggle('fit', imageFit);
+  if (imageFit) { image.style.width = ''; image.style.height = ''; }
+  else { image.style.width = `${Math.round(image.naturalWidth * imageZoom)}px`; image.style.height = `${Math.round(image.naturalHeight * imageZoom)}px`; }
+}
+document.getElementById('image-zoom-out').addEventListener('click', () => { imageFit = false; imageZoom = Math.max(.1, (imageFit ? 1 : imageZoom) / 1.25); updateImageZoom(); });
+document.getElementById('image-zoom-in').addEventListener('click', () => { imageFit = false; imageZoom = Math.min(8, (imageFit ? 1 : imageZoom) * 1.25); updateImageZoom(); });
+document.getElementById('image-fit').addEventListener('click', () => { imageFit = true; imageZoom = 1; updateImageZoom(); });
 function setMarkdownPreview(enabled) {
   if (enabled) window.renderMurasameMarkdown(markdownPreview, editor.value);
   markdownPreview.hidden = !enabled;
