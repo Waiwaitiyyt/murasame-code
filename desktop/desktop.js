@@ -23,6 +23,13 @@ let docxEditorInstance = null;
 let docxReady = false;
 let docxRevision = 0;
 let docxMountId = 0;
+let spreadsheetSelection = { row: 0, column: 0 };
+let spreadsheetWindowRow = 0;
+let spreadsheetWindowColumn = 0;
+const spreadsheetPageRows = 60;
+const spreadsheetPageColumns = 20;
+const spreadsheetMaxRows = 10000;
+const spreadsheetMaxColumns = 200;
 let codeOpacity = 0.82;
 const originalUiText = new WeakMap();
 const originalUiAttributes = new WeakMap();
@@ -819,38 +826,91 @@ function spreadsheetColumnName(index) {
   while (value) { const remainder = (value - 1) % 26; name = String.fromCharCode(65 + remainder) + name; value = Math.floor((value - 1) / 26); }
   return name;
 }
+function spreadsheetAddress(row, column) { return `${spreadsheetColumnName(column)}${row + 1}`; }
+function selectedSpreadsheetSheet() {
+  return officeDocument?.kind === 'spreadsheet' && (officeDocument.sheets.find((sheet) => sheet.name === document.getElementById('sheet-select').value) || officeDocument.sheets[0]);
+}
+function updateSpreadsheetSelection(row, column) {
+  spreadsheetSelection = { row, column };
+  document.querySelectorAll('.spreadsheet-cell.selected').forEach((cell) => cell.classList.remove('selected'));
+  const input = document.querySelector(`.spreadsheet-cell[data-row="${row}"][data-column="${column}"]`);
+  input?.classList.add('selected');
+  document.getElementById('cell-address').value = spreadsheetAddress(row, column);
+  document.getElementById('cell-formula').value = String(selectedSpreadsheetSheet()?.rows[row]?.[column] ?? '');
+}
+function setSpreadsheetCell(row, column, value) {
+  const sheet = selectedSpreadsheetSheet();
+  if (!sheet || row < 0 || row >= spreadsheetMaxRows || column < 0 || column >= spreadsheetMaxColumns) return;
+  while (sheet.rows.length <= row) sheet.rows.push([]);
+  if (String(sheet.rows[row][column] ?? '') === value) return;
+  sheet.rows[row][column] = value;
+  setOfficeDirty();
+}
+function focusSpreadsheetCell(row, column) {
+  row = Math.max(0, Math.min(spreadsheetMaxRows - 1, row));
+  column = Math.max(0, Math.min(spreadsheetMaxColumns - 1, column));
+  if (row < spreadsheetWindowRow || row >= spreadsheetWindowRow + spreadsheetPageRows) {
+    spreadsheetWindowRow = Math.floor(row / spreadsheetPageRows) * spreadsheetPageRows;
+    renderSpreadsheet();
+  }
+  if (column < spreadsheetWindowColumn || column >= spreadsheetWindowColumn + spreadsheetPageColumns) {
+    spreadsheetWindowColumn = Math.floor(column / spreadsheetPageColumns) * spreadsheetPageColumns;
+    renderSpreadsheet();
+  }
+  const input = document.querySelector(`.spreadsheet-cell[data-row="${row}"][data-column="${column}"]`);
+  input?.focus(); input?.select();
+  updateSpreadsheetSelection(row, column);
+}
 function renderSpreadsheet() {
-  const documentData = officeDocument;
-  const sheetData = documentData?.sheets.find((sheet) => sheet.name === document.getElementById('sheet-select').value) || documentData?.sheets[0];
+  const sheetData = selectedSpreadsheetSheet();
   if (!sheetData) return;
   const rows = sheetData.rows;
-  const visibleRows = Math.min(150, Math.max(rows.length, rows.length ? 1 : 20));
-  const columnCount = Math.max(5, Math.min(40, rows.reduce((max, row) => Math.max(max, row.length), 0)));
+  const visibleRows = Math.min(spreadsheetPageRows, spreadsheetMaxRows - spreadsheetWindowRow);
+  const columnCount = Math.min(spreadsheetPageColumns, spreadsheetMaxColumns - spreadsheetWindowColumn);
   const table = document.getElementById('spreadsheet-table');
   table.replaceChildren();
   const head = document.createElement('thead'); const headings = document.createElement('tr');
   const corner = document.createElement('th'); corner.className = 'row-number'; corner.textContent = ''; headings.append(corner);
-  for (let column = 0; column < columnCount; column++) { const th = document.createElement('th'); th.textContent = spreadsheetColumnName(column); headings.append(th); }
+  for (let column = spreadsheetWindowColumn; column < spreadsheetWindowColumn + columnCount; column++) { const th = document.createElement('th'); th.textContent = spreadsheetColumnName(column); headings.append(th); }
   head.append(headings); table.append(head);
   const body = document.createElement('tbody');
-  for (let rowIndex = 0; rowIndex < visibleRows; rowIndex++) {
+  for (let rowIndex = spreadsheetWindowRow; rowIndex < spreadsheetWindowRow + visibleRows; rowIndex++) {
     const tr = document.createElement('tr'); const rowNumber = document.createElement('th'); rowNumber.className = 'row-number'; rowNumber.textContent = String(rowIndex + 1); tr.append(rowNumber);
-    for (let column = 0; column < columnCount; column++) {
+    for (let column = spreadsheetWindowColumn; column < spreadsheetWindowColumn + columnCount; column++) {
       const td = document.createElement('td'); const input = document.createElement('input');
       input.className = 'spreadsheet-cell'; input.value = String(rows[rowIndex]?.[column] ?? ''); input.dataset.row = String(rowIndex); input.dataset.column = String(column);
-      input.addEventListener('input', () => {
-        while (rows.length <= rowIndex) rows.push([]);
-        rows[rowIndex][column] = input.value; setOfficeDirty();
+      input.addEventListener('focus', () => updateSpreadsheetSelection(rowIndex, column));
+      input.addEventListener('input', () => { setSpreadsheetCell(rowIndex, column, input.value); updateSpreadsheetSelection(rowIndex, column); });
+      input.addEventListener('keydown', (event) => {
+        if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+        const move = { Enter: [event.shiftKey ? -1 : 1, 0], Tab: [0, event.shiftKey ? -1 : 1], ArrowUp: [-1, 0], ArrowDown: [1, 0], PageUp: [-spreadsheetPageRows, 0], PageDown: [spreadsheetPageRows, 0] }[event.key]
+          || (event.key === 'ArrowLeft' && input.selectionStart === 0 && input.selectionEnd === 0 ? [0, -1] : null)
+          || (event.key === 'ArrowRight' && input.selectionStart === input.value.length && input.selectionEnd === input.value.length ? [0, 1] : null);
+        if (move) { event.preventDefault(); focusSpreadsheetCell(rowIndex + move[0], column + move[1]); }
+      });
+      input.addEventListener('paste', (event) => {
+        const text = event.clipboardData?.getData('text/plain');
+        if (!text || !/[\t\r\n]/.test(text)) return;
+        event.preventDefault();
+        const block = text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n').map((line) => line.split('\t'));
+        for (let r = 0; r < block.length && rowIndex + r < spreadsheetMaxRows; r++) {
+          for (let c = 0; c < block[r].length && column + c < spreadsheetMaxColumns; c++) setSpreadsheetCell(rowIndex + r, column + c, block[r][c]);
+        }
+        renderSpreadsheet(); focusSpreadsheetCell(rowIndex, column);
       });
       td.append(input); tr.append(td);
     }
     body.append(tr);
   }
   table.append(body);
-  const limited = sheetData.truncated || rows.length > visibleRows || rows.some((row) => row.length > columnCount);
-  document.getElementById('spreadsheet-note').textContent = limited ? t('表格显示前 150 行和 40 列；其余单元格会保留。') : '';
-  document.getElementById('add-row').disabled = Boolean(sheetData.rowTruncated);
-  document.getElementById('add-column').disabled = Boolean(sheetData.columnTruncated);
+  const limited = sheetData.truncated;
+  document.getElementById('spreadsheet-note').textContent = limited ? t('部分列或超出上限的数据未显示；原文件内容会保留。') : '';
+  document.getElementById('sheet-window-label').textContent = `${spreadsheetWindowRow + 1}–${spreadsheetWindowRow + visibleRows} / ${Math.max(rows.length, visibleRows)} · ${spreadsheetColumnName(spreadsheetWindowColumn)}–${spreadsheetColumnName(spreadsheetWindowColumn + columnCount - 1)}`;
+  document.getElementById('sheet-previous').disabled = spreadsheetWindowRow === 0;
+  document.getElementById('sheet-next').disabled = spreadsheetWindowRow + visibleRows >= Math.max(rows.length, visibleRows);
+  document.getElementById('add-row').disabled = Boolean(sheetData.rowTruncated) || rows.length >= spreadsheetMaxRows;
+  document.getElementById('add-column').disabled = Boolean(sheetData.columnTruncated) || rows.some((row) => row.length >= spreadsheetMaxColumns);
+  updateSpreadsheetSelection(spreadsheetSelection.row, spreadsheetSelection.column);
 }
 function renderOfficeFile(file) {
   destroyDocxEditor();
@@ -865,6 +925,7 @@ function renderOfficeFile(file) {
   const spreadsheetView = document.getElementById('spreadsheet-view'); const docxView = document.getElementById('docx-view');
   spreadsheetView.hidden = file.kind !== 'spreadsheet'; docxView.hidden = file.kind !== 'docx';
   if (file.kind === 'spreadsheet') {
+    spreadsheetSelection = { row: 0, column: 0 }; spreadsheetWindowRow = 0; spreadsheetWindowColumn = 0;
     const select = document.getElementById('sheet-select'); select.replaceChildren(...file.sheets.map((sheet) => { const option = document.createElement('option'); option.value = sheet.name; option.textContent = sheet.name; return option; }));
     select.value = file.sheets[0]?.name || '';
     renderSpreadsheet();
@@ -886,19 +947,36 @@ function renderOfficeFile(file) {
   if (file.kind === 'spreadsheet') { document.getElementById('save-file').disabled = false; document.getElementById('save-status').textContent = ''; }
 }
 
-document.getElementById('sheet-select').addEventListener('change', renderSpreadsheet);
+document.getElementById('sheet-select').addEventListener('change', () => { spreadsheetSelection = { row: 0, column: 0 }; spreadsheetWindowRow = 0; spreadsheetWindowColumn = 0; renderSpreadsheet(); });
+document.getElementById('cell-address').addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  const match = /^([A-Za-z]{1,3})([1-9]\d*)$/.exec(event.currentTarget.value.trim());
+  if (!match) { event.currentTarget.value = spreadsheetAddress(spreadsheetSelection.row, spreadsheetSelection.column); return; }
+  const column = [...match[1].toUpperCase()].reduce((value, letter) => value * 26 + letter.charCodeAt(0) - 64, 0) - 1;
+  const row = Number(match[2]) - 1;
+  focusSpreadsheetCell(row, column);
+});
+document.getElementById('cell-formula').addEventListener('input', (event) => {
+  const { row, column } = spreadsheetSelection;
+  setSpreadsheetCell(row, column, event.currentTarget.value);
+  const input = document.querySelector(`.spreadsheet-cell[data-row="${row}"][data-column="${column}"]`);
+  if (input) input.value = event.currentTarget.value;
+});
+document.getElementById('sheet-previous').addEventListener('click', () => { spreadsheetWindowRow = Math.max(0, spreadsheetWindowRow - spreadsheetPageRows); renderSpreadsheet(); focusSpreadsheetCell(spreadsheetWindowRow, spreadsheetSelection.column); });
+document.getElementById('sheet-next').addEventListener('click', () => { spreadsheetWindowRow = Math.min(spreadsheetMaxRows - 1, spreadsheetWindowRow + spreadsheetPageRows); renderSpreadsheet(); focusSpreadsheetCell(spreadsheetWindowRow, spreadsheetSelection.column); });
 document.getElementById('add-row').addEventListener('click', () => {
   const sheet = officeDocument?.sheets.find((item) => item.name === document.getElementById('sheet-select').value);
   if (!sheet) return;
   sheet.rows.push(Array(Math.max(5, sheet.rows.reduce((max, row) => Math.max(max, row.length), 0))).fill(''));
-  setOfficeDirty(); renderSpreadsheet();
+  setOfficeDirty(); renderSpreadsheet(); focusSpreadsheetCell(sheet.rows.length - 1, 0);
 });
 document.getElementById('add-column').addEventListener('click', () => {
   const sheet = officeDocument?.sheets.find((item) => item.name === document.getElementById('sheet-select').value);
   if (!sheet) return;
   if (!sheet.rows.length) sheet.rows.push([]);
-  sheet.rows.forEach((row) => row.push(''));
-  setOfficeDirty(); renderSpreadsheet();
+  const column = Math.max(...sheet.rows.map((row) => row.length));
+  sheet.rows.forEach((row) => { row[column] = ''; });
+  setOfficeDirty(); renderSpreadsheet(); focusSpreadsheetCell(0, column);
 });
 async function loadFile(filePath) {
   if (!await protectUnsavedFile()) return;

@@ -606,7 +606,7 @@ ipcMain.handle('read-workspace-office', async (_event, relativePath) => {
     if (buffer.subarray(0, 2).toString() !== 'PK') throw new Error('文件内容不是有效的 DOCX。');
     return { kind: 'docx', path: relativePath, data: buffer, hash };
   }
-  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: false });
+  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: ['.csv', '.tsv'].includes(extension) });
   const sheets = workbook.SheetNames.map((name) => {
     const sheet = workbook.Sheets[name];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
@@ -646,7 +646,8 @@ ipcMain.handle('save-workspace-office', async (_event, relativePath, document, e
           const address = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex });
           const cell = sheet[address] || {};
           delete cell.v; delete cell.w; delete cell.f;
-          if (value.startsWith('=')) { cell.t = 'n'; cell.f = value.slice(1); }
+          if (extension === '.csv' || extension === '.tsv') { cell.t = 's'; cell.v = value; }
+          else if (value.startsWith('=')) { cell.t = 'n'; cell.f = value.slice(1); }
           else if (value.trim() && Number.isFinite(Number(value))) { cell.t = 'n'; cell.v = Number(value); }
           else if (/^(true|false)$/i.test(value)) { cell.t = 'b'; cell.v = value.toLowerCase() === 'true'; }
           else if (value !== '') { cell.t = 's'; cell.v = value; }
