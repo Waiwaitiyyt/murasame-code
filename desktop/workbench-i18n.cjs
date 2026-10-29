@@ -3,7 +3,7 @@ const workbenchTranslations = {
   zh: { '文件菜单': '文件' },
   en: {
     '背景 ▾': 'Background ▾', '背景设置': 'Background Settings', '代码编辑器透明度': 'Code Editor Opacity', '添加行': 'Add Row', '添加列': 'Add Column', '工作表': 'Worksheet', '表格显示前 150 行和 40 列；其余单元格会保留。': 'Showing the first 150 rows and 40 columns; other cells are preserved.', 'DOCX 会以纯文本编辑；保存时会生成新的段落文档并移除原有格式、图片和表格。': 'DOCX is edited as plain text. Saving creates a new paragraph document and removes its original formatting, images, and tables.', '暂不支持这种文档格式。': 'This document format is not supported.', '文件超过 25 MB，暂不支持编辑。': 'Files over 25 MB cannot be edited.', '文件已在其他位置发生变化，请重新载入后再保存。': 'This file changed elsewhere. Reload it before saving.',
-    'PDF 阅读器': 'PDF Reader',
+    'PDF 阅读器': 'PDF Reader', '正在打开文档…': 'Opening document…', '打开失败': 'Could not open', '无法打开 DOCX 文档。': 'Could not open the DOCX document.', 'DOCX 编辑器出错。': 'DOCX editor error.',
     '无法解码这张图片。': 'This image could not be decoded.',
     '适应窗口': 'Fit to Window', '缩小图片': 'Zoom Out', '放大图片': 'Zoom In',
     '本次任务': 'this task',
@@ -37,7 +37,7 @@ const workbenchTranslations = {
   },
   ja: {
     '背景 ▾': '背景 ▾', '背景设置': '背景設定', '代码编辑器透明度': 'コードエディターの透明度', '添加行': '行を追加', '添加列': '列を追加', '工作表': 'ワークシート', '表格显示前 150 行和 40 列；其余单元格会保留。': '先頭150行・40列を表示しています。その他のセルは保持されます。', 'DOCX 会以纯文本编辑；保存时会生成新的段落文档并移除原有格式、图片和表格。': 'DOCX はプレーンテキストで編集されます。保存すると段落形式で再作成され、元の書式・画像・表は失われます。', '暂不支持这种文档格式。': 'この文書形式はサポートされていません。', '文件超过 25 MB，暂不支持编辑。': '25 MB を超えるファイルは編集できません。', '文件已在其他位置发生变化，请重新载入后再保存。': 'ファイルが別の場所で変更されています。再読み込みしてから保存してください。',
-    'PDF 阅读器': 'PDF リーダー',
+    'PDF 阅读器': 'PDF リーダー', '正在打开文档…': '文書を開いています…', '打开失败': '開けませんでした', '无法打开 DOCX 文档。': 'DOCX 文書を開けませんでした。', 'DOCX 编辑器出错。': 'DOCX エディターでエラーが発生しました。',
     '无法解码这张图片。': 'この画像をデコードできませんでした。',
     '适应窗口': 'ウィンドウに合わせる', '缩小图片': '縮小', '放大图片': '拡大',
     '本次任务': '今回のタスク',

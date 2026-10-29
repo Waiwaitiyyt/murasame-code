@@ -144,9 +144,8 @@ h1 { margin: 0 0 7px; color: var(--text); font-family: "SimSun", serif; font-siz
 #spreadsheet-table thead .row-number { z-index: 3; }
 .spreadsheet-cell { width: 100%; height: 28px; padding: 4px 7px; border: 1px solid transparent; border-radius: 0; outline: 0; color: var(--text); background: transparent; font: inherit; }
 .spreadsheet-cell:focus { position: relative; z-index: 1; border-color: var(--studio-primary); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--studio-primary); }
-#docx-view { height: 100%; min-height: 0; display: flex; flex-direction: column; padding: 12px; }
-.office-warning { flex: none; margin: 0 0 10px; padding: 9px 11px; border: 1px solid color-mix(in srgb, #d89a42 40%, var(--border)); border-radius: 8px; color: var(--text-soft); background: color-mix(in srgb, #f4ce84 19%, var(--surface)); font-size: 11px; line-height: 1.5; }
-#docx-editor { min-height: 0; flex: 1; resize: none; padding: 14px; border: 1px solid var(--border); border-radius: 8px; outline: 0; color: var(--text); background: var(--surface-raised); font: 13px/1.75 "Segoe UI", "Microsoft YaHei", sans-serif; }
+#docx-view { height: 100%; min-height: 0; overflow: auto; }
+#docx-editor { height: 100%; min-height: 0; }
 .markdown-preview { flex: 1; overflow: auto; padding: 18px 24px; color: var(--text); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .image-preview { min-width: 0; min-height: 0; flex: 1; overflow: auto; background-color: #e8e8e8; background-image: linear-gradient(45deg, #d6d6d6 25%, transparent 25%), linear-gradient(-45deg, #d6d6d6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d6d6d6 75%), linear-gradient(-45deg, transparent 75%, #d6d6d6 75%); background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0; }
 .image-canvas { min-width: 100%; min-height: 100%; display: grid; place-items: center; padding: 24px; }

@@ -19,6 +19,10 @@ let imageZoom = 1;
 let officeDocument = null;
 let officeHash = null;
 let officeDirty = false;
+let docxEditorInstance = null;
+let docxReady = false;
+let docxRevision = 0;
+let docxMountId = 0;
 let codeOpacity = 0.82;
 const originalUiText = new WeakMap();
 const originalUiAttributes = new WeakMap();
@@ -94,6 +98,13 @@ const providerDefaults = {
   openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' },
 };
 function isEditorDirty() { return officeDocument ? officeDirty : editor.value !== savedContents; }
+function destroyDocxEditor() {
+  docxMountId++;
+  docxReady = false;
+  docxEditorInstance?.destroy();
+  docxEditorInstance = null;
+  document.getElementById('docx-editor').replaceChildren();
+}
 
 function appendBubble(role, content) {
   conversation.querySelector('.hint')?.remove();
@@ -493,6 +504,7 @@ async function chooseWorkspace() {
     openFile = null;
     savedContents = '';
     editor.value = '';
+    destroyDocxEditor();
     officeDocument = null; officeHash = null; officeDirty = false;
     document.getElementById('editor-path').textContent = t('选择文件以查看');
     document.getElementById('editor-path').removeAttribute('title');
@@ -525,9 +537,14 @@ async function saveOpenFile() {
   if (!openFile) return true;
   try {
     if (officeDocument) {
-      const result = await ipcRenderer.invoke('save-workspace-office', openFile, officeDocument, officeHash);
-      officeHash = result.hash; officeDirty = false;
-      document.getElementById('save-status').textContent = t('已保存');
+      if (!officeDirty) return true;
+      const savingDocument = officeDocument;
+      const savingRevision = docxRevision;
+      const payload = savingDocument.kind === 'docx' ? { kind: 'docx', data: new Uint8Array(await (await docxEditorInstance.export({ exportType: ['docx'], triggerDownload: false })).arrayBuffer()) } : savingDocument;
+      const result = await ipcRenderer.invoke('save-workspace-office', openFile, payload, officeHash);
+      officeHash = result.hash;
+      officeDirty = savingDocument.kind === 'docx' && docxRevision !== savingRevision;
+      document.getElementById('save-status').textContent = t(officeDirty ? '未保存' : '已保存');
       return true;
     }
     await ipcRenderer.invoke('save-workspace-file', openFile, editor.value, savedContents);
@@ -836,6 +853,7 @@ function renderSpreadsheet() {
   document.getElementById('add-column').disabled = Boolean(sheetData.columnTruncated);
 }
 function renderOfficeFile(file) {
+  destroyDocxEditor();
   officeDocument = file; officeHash = file.hash; officeDirty = false;
   codeEditorShell.hidden = true;
   document.querySelector('.editor-panel').classList.remove('code-theme');
@@ -851,10 +869,21 @@ function renderOfficeFile(file) {
     select.value = file.sheets[0]?.name || '';
     renderSpreadsheet();
   } else {
-    const docxEditor = document.getElementById('docx-editor'); docxEditor.value = file.content;
+    docxRevision = 0;
+    const mountId = docxMountId;
+    document.getElementById('save-file').disabled = true;
+    document.getElementById('save-status').textContent = t('正在打开文档…');
+    const { SuperDoc } = require('superdoc');
+    const docx = new Blob([file.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    docxEditorInstance = new SuperDoc({
+      selector: '#docx-editor', document: docx, contained: true, telemetry: { enabled: false },
+      onReady: () => { if (mountId !== docxMountId) return; docxReady = true; document.getElementById('save-file').disabled = false; document.getElementById('save-status').textContent = ''; },
+      onEditorUpdate: () => { if (mountId === docxMountId && docxReady) { docxRevision++; setOfficeDirty(); } },
+      onContentError: ({ error }) => { if (mountId !== docxMountId) return; showNotice(error?.message || t('无法打开 DOCX 文档。'), true); document.getElementById('save-status').textContent = t('打开失败'); },
+      onException: ({ error }) => { if (mountId !== docxMountId) return; showNotice(error?.message || t('DOCX 编辑器出错。'), true); if (!docxReady) document.getElementById('save-status').textContent = t('打开失败'); },
+    });
   }
-  document.getElementById('save-file').disabled = false;
-  document.getElementById('save-status').textContent = '';
+  if (file.kind === 'spreadsheet') { document.getElementById('save-file').disabled = false; document.getElementById('save-status').textContent = ''; }
 }
 
 document.getElementById('sheet-select').addEventListener('change', renderSpreadsheet);
@@ -871,17 +900,13 @@ document.getElementById('add-column').addEventListener('click', () => {
   sheet.rows.forEach((row) => row.push(''));
   setOfficeDirty(); renderSpreadsheet();
 });
-document.getElementById('docx-editor').addEventListener('input', (event) => {
-  if (!officeDocument) return;
-  officeDocument.content = event.target.value; setOfficeDirty();
-});
-
 async function loadFile(filePath) {
   if (!await protectUnsavedFile()) return;
   try {
     const isImage = /\.(?:png|jpe?g|gif|webp|bmp|ico|svg)$/i.test(filePath);
     if (isImage) {
       const file = await ipcRenderer.invoke('read-workspace-image', filePath);
+      destroyDocxEditor();
       openFile = file.path;
       officeDocument = null; officeHash = null; officeDirty = false;
       document.getElementById('office-preview').hidden = true;
@@ -916,6 +941,7 @@ async function loadFile(filePath) {
     }
     if (/\.pdf$/i.test(filePath)) {
       const file = await ipcRenderer.invoke('read-workspace-pdf', filePath);
+      destroyDocxEditor();
       openFile = file.path; savedContents = ''; editor.value = '';
       officeDocument = null; officeHash = null; officeDirty = false;
       document.getElementById('office-preview').hidden = true;
@@ -944,6 +970,7 @@ async function loadFile(filePath) {
       return;
     }
     const file = await ipcRenderer.invoke('read-workspace-file', filePath);
+    destroyDocxEditor();
     openFile = file.path;
     officeDocument = null; officeHash = null; officeDirty = false;
     document.getElementById('office-preview').hidden = true;

@@ -8,8 +8,6 @@ const { randomUUID } = require('crypto');
 const Store = require('electron-store');
 const { pathToFileURL } = require('url');
 const XLSX = require('xlsx');
-const mammoth = require('mammoth');
-const { Document, Packer, Paragraph } = require('docx');
 const { languageNames, detectLanguage, translator } = require('./i18n.cjs');
 const { workbenchTranslate } = require('./workbench-i18n.cjs');
 
@@ -605,8 +603,8 @@ ipcMain.handle('read-workspace-office', async (_event, relativePath) => {
   const hash = createHash('sha256').update(buffer).digest('hex');
   officeWorkbooks.clear(); officeBaselines.clear();
   if (extension === '.docx') {
-    const result = await mammoth.extractRawText({ buffer });
-    return { kind: 'docx', path: relativePath, content: result.value, hash };
+    if (buffer.subarray(0, 2).toString() !== 'PK') throw new Error('文件内容不是有效的 DOCX。');
+    return { kind: 'docx', path: relativePath, data: buffer, hash };
   }
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: false });
   const sheets = workbook.SheetNames.map((name) => {
@@ -628,8 +626,8 @@ ipcMain.handle('save-workspace-office', async (_event, relativePath, document, e
   const extension = path.extname(target).toLowerCase();
   let output;
   if (extension === '.docx') {
-    const paragraphs = String(document.content || '').replace(/\r\n?/g, '\n').split('\n').map((text) => new Paragraph({ text }));
-    output = await Packer.toBuffer(new Document({ sections: [{ children: paragraphs }] }));
+    output = Buffer.from(document.data || []);
+    if (!output.length || output.length > 25 * 1024 * 1024 || output.subarray(0, 2).toString() !== 'PK') throw new Error('保存的 DOCX 数据无效。');
     await fs.promises.writeFile(target, output);
   } else {
     const workbook = officeWorkbooks.get(target) || XLSX.read(current, { type: 'buffer' });
