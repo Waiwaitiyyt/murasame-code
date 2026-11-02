@@ -174,3 +174,73 @@ main { grid-column: 2; grid-row: 2; min-width: 0; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* Visual novel branches: floating choices over the current scene. */
+.app-dialog.choice-dialog {
+  width: min(640px, calc(100vw - 40px));
+  max-height: calc(100dvh - 48px);
+  padding: 20px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow-y: auto;
+}
+.choice-dialog::backdrop {
+  background: color-mix(in srgb, var(--app-bg) 62%, transparent);
+  backdrop-filter: blur(6px);
+}
+.choice-dialog .dialog-heading { align-items: center; margin: 0 12px 24px; gap: 16px; }
+.choice-dialog .dialog-heading > div { flex: 1; min-width: 0; text-align: center; padding-left: 32px; }
+.choice-dialog .dialog-kicker { color: var(--green-strong); letter-spacing: .24em; }
+.choice-dialog .dialog-heading h2 { font-size: 19px; line-height: 1.6; overflow-wrap: anywhere; }
+.choice-dialog .icon-button { flex-shrink: 0; background: var(--surface); border-radius: 50%; }
+.choice-dialog .choice-options { gap: 16px; padding: 4px 10px 16px; }
+.choice-dialog .choice-options button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  min-height: 58px;
+  padding: 14px 42px;
+  border: 1px solid var(--border-strong);
+  border-radius: 32px;
+  outline-offset: 5px;
+  color: var(--text);
+  background: linear-gradient(110deg, var(--surface-raised), var(--surface-muted));
+  box-shadow: inset 0 0 0 4px var(--surface-raised), 0 5px 18px rgba(25, 45, 32, .12);
+  text-align: center;
+  transition: border-color .16s, color .16s, transform .16s, background .16s;
+  overflow-wrap: anywhere;
+}
+.choice-dialog .choice-options button::before,
+.choice-dialog .choice-options button::after {
+  content: '◆'; position: absolute; top: 50%; transform: translateY(-50%);
+  color: var(--green); font-size: 8px; opacity: .65;
+}
+.choice-dialog .choice-options button::before { left: 20px; }
+.choice-dialog .choice-options button::after { right: 20px; }
+.choice-dialog .choice-options button strong { font-size: 14px; font-weight: 600; letter-spacing: .06em; line-height: 1.5; }
+.choice-dialog .choice-options button span { color: var(--text-soft); font-size: 11px; line-height: 1.5; }
+.choice-dialog .choice-options button:hover,
+.choice-dialog .choice-options button:focus-visible {
+  color: var(--purple-strong);
+  border-color: var(--purple);
+  background: var(--surface-lavender);
+  box-shadow: inset 0 0 0 4px var(--surface-raised), 0 6px 22px rgba(65, 45, 80, .16);
+  transform: translateY(-2px);
+}
+.choice-dialog .choice-options button:focus-visible { outline: 2px solid var(--purple); }
+.choice-dialog .choice-options button:active { transform: translateY(0); }
+.choice-dialog .choice-detail {
+  max-height: min(28dvh, 240px); overflow: auto; margin: 0 10px 20px;
+  padding: 16px 20px; border: 1px solid var(--border); border-radius: 16px;
+  background: var(--surface); color: var(--text-soft); font: 12px/1.7 ui-monospace, monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere; text-align: left;
+}
+@media (prefers-reduced-motion: reduce) {
+  .choice-dialog .choice-options button { transition: none; }
+}

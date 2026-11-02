@@ -94,8 +94,9 @@
       <div class="dialog-actions"><button type="button" data-close-dialog>取消</button><button type="submit" class="primary-button">保存设置</button></div>
     </form>
   </dialog>
-  <dialog id="choice-dialog" class="app-dialog choice-dialog">
-    <div class="dialog-heading"><div><span class="dialog-kicker">MURASAME / SESSION</span><h2 id="choice-title"></h2></div><button type="button" class="icon-button" data-close-dialog aria-label="关闭">×</button></div>
+  <dialog id="choice-dialog" class="app-dialog choice-dialog" aria-labelledby="choice-title">
+    <div class="dialog-heading"><div><span class="dialog-kicker">MURASAME / CHOICE</span><h2 id="choice-title"></h2></div><button type="button" class="icon-button" data-close-dialog aria-label="关闭">×</button></div>
+    <pre id="choice-detail" class="choice-detail" hidden></pre>
     <div id="choice-options" class="choice-options"></div>
   </dialog>
   <script src="markdown.js"></script>

@@ -771,14 +771,30 @@ ipcMain.handle('run-murasame', async (_event, prompt) => {
         },
         confirmTool: async (call) => {
           const detail = `${call.name}\n${JSON.stringify(call.input, null, 2)}`;
-          const options = {
-            type: 'warning', title: '丛雨请求执行工具', message: '是否允许丛雨执行这项操作？', detail,
-            buttons: ['允许一次', '拒绝', '始终允许相同操作'], defaultId: 1, cancelId: 1,
-          };
-          const choice = appWindow?.isVisible()
-            ? await dialog.showMessageBox(appWindow, options)
-            : await dialog.showMessageBox(options);
-          return choice.response === 0 ? 'yes' : choice.response === 2 ? 'always' : 'no';
+          if (!appWindow || appWindow.isDestroyed() || abortController.signal.aborted) return 'no';
+          const target = appWindow.webContents;
+          const id = require('node:crypto').randomUUID();
+          return new Promise((resolve) => {
+            const finish = (answer) => {
+              ipcMain.removeListener('tool-permission-response', onResponse);
+              abortController.signal.removeEventListener('abort', onCancel);
+              target.removeListener('destroyed', onCancel);
+              resolve(answer);
+            };
+            const onResponse = (event, response) => {
+              if (event.sender !== target || response?.id !== id) return;
+              finish(['yes', 'always'].includes(response.answer) ? response.answer : 'no');
+            };
+            const onCancel = () => {
+              if (!target.isDestroyed()) target.send('tool-permission-cancelled', { id });
+              finish('no');
+            };
+            ipcMain.on('tool-permission-response', onResponse);
+            abortController.signal.addEventListener('abort', onCancel, { once: true });
+            target.once('destroyed', onCancel);
+            appWindow.show();
+            target.send('tool-permission-request', { id, detail });
+          });
         },
       },
       abortController.signal,

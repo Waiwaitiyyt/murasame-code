@@ -252,17 +252,39 @@ function showNotice(message, isError = false) {
   return bubble;
 }
 
-function choose(title, choices) {
-  const heading = document.getElementById('choice-title');
-  const options = document.getElementById('choice-options');
-  heading.textContent = title;
-  options.replaceChildren();
-  return new Promise((resolve) => {
+let choiceQueue = Promise.resolve();
+let activePermissionId = null;
+const cancelledPermissions = new Set();
+function choose(title, choices, detail = '', permissionId = null) {
+  const pending = choiceQueue.then(() => new Promise((resolve) => {
+    if (permissionId && cancelledPermissions.delete(permissionId)) { resolve(null); return; }
+    activePermissionId = permissionId;
+    const previousFocus = document.activeElement;
+    const options = document.getElementById('choice-options');
+    document.getElementById('choice-title').textContent = title;
+    const details = document.getElementById('choice-detail');
+    details.textContent = detail;
+    details.hidden = !detail;
+    options.replaceChildren();
+    choiceDialog.returnValue = '';
     const onClose = () => {
       choiceDialog.removeEventListener('close', onClose);
+      options.removeEventListener('keydown', onKey);
+      activePermissionId = null;
+      previousFocus?.focus();
       resolve(choiceDialog.returnValue || null);
     };
+    const onKey = (event) => {
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const buttons = [...options.children];
+      const current = buttons.indexOf(document.activeElement);
+      const index = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+        : (current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[index]?.focus();
+    };
     choiceDialog.addEventListener('close', onClose);
+    options.addEventListener('keydown', onKey);
     for (const choice of choices) {
       const button = document.createElement('button');
       button.type = 'button';
@@ -278,8 +300,25 @@ function choose(title, choices) {
       options.append(button);
     }
     choiceDialog.showModal();
-  });
+    // Keep permission and destructive decisions unselected until the user acts.
+    choiceDialog.querySelector('[data-close-dialog]').focus();
+  }));
+  choiceQueue = pending.catch(() => {});
+  return pending;
 }
+
+ipcRenderer.on('tool-permission-request', async (_event, { id, detail }) => {
+  const answer = await choose(t('是否允许丛雨执行这项操作？'), [
+    { label: t('允许一次'), value: 'yes' },
+    { label: t('拒绝'), value: 'no' },
+    { label: t('始终允许相同操作'), value: 'always' },
+  ], detail, id);
+  ipcRenderer.send('tool-permission-response', { id, answer: answer || 'no' });
+});
+ipcRenderer.on('tool-permission-cancelled', (_event, { id }) => {
+  if (activePermissionId === id && choiceDialog.open) choiceDialog.close();
+  else cancelledPermissions.add(id);
+});
 
 async function openConfigDialog() {
   try {
@@ -676,7 +715,7 @@ document.getElementById('session-list').addEventListener('click', async (event) 
     }
     if (action?.dataset.sessionAction === 'delete') {
       const item = sessionState.sessions.find((entry) => entry.id === id);
-      if (!window.confirm(`${t('删除当前会话及其记录？')}\n${item?.name || ''}`)) return;
+      if (await choose(t('删除当前会话及其记录？'), [{ label: t('取消'), value: 'cancel' }, { label: t('删除'), value: 'confirm' }], item?.name || '') !== 'confirm') return;
       await ipcRenderer.invoke('delete-session', id);
       if (id === sessionState.activeId) { currentAnswer = null; await refreshSession(); }
       else await refreshSessionIndex();
@@ -1179,7 +1218,7 @@ async function refreshChanges() {
       row.append(label);
       const revert = document.createElement('button'); revert.type = 'button'; revert.textContent = t('撤销此文件');
       revert.addEventListener('click', async () => {
-        if (!window.confirm(`${t('恢复任务前版本？')}\n${change.file}`)) return;
+        if (await choose(t('恢复任务前版本？'), [{ label: t('取消'), value: 'cancel' }, { label: t('撤销此文件'), value: 'confirm' }], change.file) !== 'confirm') return;
         try { await ipcRenderer.invoke('revert-agent-file', change.file); await refreshChanges(); await refreshFiles(); }
         catch (error) { showNotice(error.message, true); }
       }); row.append(revert); list.append(row);
