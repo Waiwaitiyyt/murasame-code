@@ -269,22 +269,37 @@ function choose(title, choices, detail = '', permissionId = null) {
     choiceDialog.returnValue = '';
     const onClose = () => {
       choiceDialog.removeEventListener('close', onClose);
-      options.removeEventListener('keydown', onKey);
+      choiceDialog.removeEventListener('keydown', onKey);
       activePermissionId = null;
       previousFocus?.focus();
       resolve(choiceDialog.returnValue || null);
     };
     const onKey = (event) => {
+      if (event.isComposing) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        choiceDialog.close();
+        return;
+      }
+      if (event.key === 'Enter' && options.contains(document.activeElement)) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) document.activeElement.click();
+        return;
+      }
       if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
+      event.stopPropagation();
       const buttons = [...options.children];
       const current = buttons.indexOf(document.activeElement);
       const index = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
-        : (current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+        : current < 0 ? (event.key === 'ArrowDown' ? 0 : buttons.length - 1)
+          : (current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
       buttons[index]?.focus();
     };
     choiceDialog.addEventListener('close', onClose);
-    options.addEventListener('keydown', onKey);
+    choiceDialog.addEventListener('keydown', onKey);
     for (const choice of choices) {
       const button = document.createElement('button');
       button.type = 'button';
@@ -300,8 +315,7 @@ function choose(title, choices, detail = '', permissionId = null) {
       options.append(button);
     }
     choiceDialog.showModal();
-    // Keep permission and destructive decisions unselected until the user acts.
-    choiceDialog.querySelector('[data-close-dialog]').focus();
+    options.firstElementChild?.focus();
   }));
   choiceQueue = pending.catch(() => {});
   return pending;
