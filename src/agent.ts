@@ -94,6 +94,7 @@ export async function compactConversation(
   conversation: Conversation,
   signal: AbortSignal,
 ): Promise<{ usage?: { inputTokens: number; outputTokens: number } }> {
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
   if (conversation.length <= 1) return {};
   const history = conversation.slice(1).map((message) => {
     if (message.role === 'tool') return `tool ${message.name}: ${message.content.slice(0, 2000)}`;
@@ -110,6 +111,7 @@ export async function compactConversation(
     { role: 'system', content: 'Summarize this coding-agent conversation in the same language as the user. Preserve user requirements, decisions, file changes, unresolved problems, and important tool results. Be concise and factual.' },
     { role: 'user', content: context },
   ], [], {}, signal);
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
   const summary = result.text.trim();
   if (!summary) throw new Error('Could not summarize the conversation');
   conversation.splice(1, conversation.length - 1, {
@@ -153,6 +155,7 @@ export async function runTurn(
       if (usage) hooks.onUsage?.(usage.inputTokens, usage.outputTokens);
 
       if (toolCalls.length === 0) {
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
         conversation.push({ role: 'assistant', content: text, toolCalls: [] });
         hooks.onConversationChange?.();
         if (text) hooks.onText?.(text);
@@ -184,6 +187,7 @@ export async function runTurn(
             result = await executeTool(call.name, call.input, cwd, signal);
           }
         } catch (e) {
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
           ok = false;
           result = t('agent.toolExecError', { error: (e as Error).message });
         }
@@ -191,6 +195,7 @@ export async function runTurn(
         conversation.push({ role: 'tool', toolCallId: call.id, name: call.name, content: result });
         hooks.onConversationChange?.();
       }
+      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
     }
 
     const maxed = t('agent.maxIterations');

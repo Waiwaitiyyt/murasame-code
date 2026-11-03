@@ -171,3 +171,65 @@ test('manual mode asks once after always approving an identical tool call', asyn
     rmSync(cwd, { recursive: true, force: true });
   }
 });
+
+test('cancelling a pending approval records cancelled tools without reporting execution errors', async () => {
+  const controller = new AbortController();
+  const conversation: Conversation = [{ role: 'system', content: 'system' }];
+  let reportedResults = 0;
+  let requests = 0;
+  const client: LLMClient = {
+    provider: 'openai',
+    async stream() {
+      requests++;
+      return { text: '', toolCalls: [
+        { id: 'first', name: 'bash', input: { command: 'pwd' } },
+        { id: 'second', name: 'bash', input: { command: 'pwd' } },
+      ] };
+    },
+  };
+  await assert.rejects(runTurn(client, conversation, 'inspect', {
+    confirmTool: async () => { controller.abort(); return 'yes'; },
+    onToolResult: () => { reportedResults++; },
+  }, controller.signal, process.cwd(), new PermissionManager('manual')), { name: 'AbortError' });
+  assert.equal(requests, 1);
+  assert.equal(reportedResults, 0);
+  assert.deepEqual(conversation.slice(-2).map((message) =>
+    message.role === 'tool' ? message.toolCallId : ''), ['first', 'second']);
+  assert.equal(conversation.at(-1)?.content, conversation.at(-2)?.content);
+});
+
+test('a late model response after cancellation is not accepted as a completed turn', async () => {
+  const controller = new AbortController();
+  const conversation: Conversation = [{ role: 'system', content: 'system' }];
+  let reportedText = false;
+  const client: LLMClient = {
+    provider: 'openai',
+    async stream() {
+      controller.abort();
+      return { text: 'late answer', toolCalls: [] };
+    },
+  };
+  await assert.rejects(runTurn(client, conversation, 'inspect', {
+    onText: () => { reportedText = true; },
+  }, controller.signal, process.cwd()), { name: 'AbortError' });
+  assert.equal(reportedText, false);
+  assert.equal(conversation.length, 2);
+});
+
+test('cancelling compaction preserves the original conversation', async () => {
+  const controller = new AbortController();
+  const conversation: Conversation = [
+    { role: 'system', content: 'system' },
+    { role: 'user', content: 'Keep this history' },
+  ];
+  const original = structuredClone(conversation);
+  const client: LLMClient = {
+    provider: 'openai',
+    async stream() {
+      controller.abort();
+      return { text: 'late summary', toolCalls: [] };
+    },
+  };
+  await assert.rejects(compactConversation(client, conversation, controller.signal), { name: 'AbortError' });
+  assert.deepEqual(conversation, original);
+});
