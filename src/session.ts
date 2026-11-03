@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { newConversation, type Conversation } from './agent.js';
 import type { ChatMessage } from './llm.js';
+import { writePrivateFileAtomic } from './storage.js';
 
 const defaultDirectory = join(homedir(), '.murasame', 'sessions');
 
@@ -62,15 +63,8 @@ export function loadSession(cwd: string, directory = defaultDirectory): Conversa
 export function saveSession(cwd: string, conversation: Conversation, directory = defaultDirectory): void {
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const file = sessionFilePath(cwd, directory);
-  const temp = `${file}.${process.pid}.tmp`;
   const data = { version: 1, cwd: resolve(cwd), messages: conversation.filter((message) => message.role !== 'system') };
-  try {
-    writeFileSync(temp, JSON.stringify(data) + '\n', { encoding: 'utf8', mode: 0o600 });
-    renameSync(temp, file);
-  } catch (error) {
-    try { unlinkSync(temp); } catch { /* no temporary file */ }
-    throw error;
-  }
+  writePrivateFileAtomic(file, JSON.stringify(data) + '\n');
 }
 
 export function clearSession(cwd: string, directory = defaultDirectory): void {
