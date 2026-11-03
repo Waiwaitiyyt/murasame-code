@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { join, dirname, isAbsolute, relative, resolve } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import fg from 'fast-glob';
 import type { ToolDef } from './llm.js';
 import { t } from './i18n.js';
@@ -245,6 +246,8 @@ async function runBash(input: Record<string, unknown>, cwd: string, signal?: Abo
       });
       let stdout = '';
       let stderr = '';
+      const stdoutDecoder = new StringDecoder('utf8');
+      const stderrDecoder = new StringDecoder('utf8');
       let bytes = 0;
       let tooLarge = false;
       const kill = () => {
@@ -272,8 +275,8 @@ async function runBash(input: Record<string, unknown>, cwd: string, signal?: Abo
           kill();
           return;
         }
-        if (stream === 'stdout') stdout += chunk.toString('utf8');
-        else stderr += chunk.toString('utf8');
+        if (stream === 'stdout') stdout += stdoutDecoder.write(chunk);
+        else stderr += stderrDecoder.write(chunk);
       };
       child.stdout.on('data', (chunk: Buffer) => collect(chunk, 'stdout'));
       child.stderr.on('data', (chunk: Buffer) => collect(chunk, 'stderr'));
@@ -285,6 +288,8 @@ async function runBash(input: Record<string, unknown>, cwd: string, signal?: Abo
       child.on('close', (code) => {
         clearTimeout(timer);
         signal?.removeEventListener('abort', onAbort);
+        stdout += stdoutDecoder.end();
+        stderr += stderrDecoder.end();
         if (code === 0 && !tooLarge && !timedOut) resolve({ stdout, stderr });
         else reject({ code, stdout, stderr, message: tooLarge ? 'Command output exceeded 8MB' : '' });
       });

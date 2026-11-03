@@ -57,3 +57,27 @@ test('destructive shell commands require approval', () => {
   assert.equal(requiresCommandApproval('git clean -fd'), true);
   assert.equal(requiresCommandApproval('pwd'), false);
 });
+
+test('bash preserves UTF-8 characters split across stdout and stderr chunks', {
+  skip: process.platform === 'win32' ? 'Uses bash printf to emit individual bytes' : false,
+}, async () => {
+  const bytes = (value: string, start: number, end?: number) =>
+    [...Buffer.from(value).subarray(start, end)]
+      .map((byte) => `\\${byte.toString(8).padStart(3, '0')}`).join('');
+  const output = '丛雨 🌸';
+  const error = '错误 🗡️';
+  const command = [
+    `printf '${bytes(output, 0, 1)}'`,
+    `printf '${bytes(error, 0, 2)}' >&2`,
+    'sleep 0.1',
+    `printf '${bytes(output, 1, 9)}'`,
+    `printf '${bytes(error, 2, 9)}' >&2`,
+    'sleep 0.1',
+    `printf '${bytes(output, 9)}'`,
+    `printf '${bytes(error, 9)}' >&2`,
+  ].join('; ');
+  const result = await executeTool('bash', { command }, process.cwd());
+  assert.match(result, /丛雨 🌸/);
+  assert.match(result, /\[stderr\]\n错误 🗡️/);
+  assert.doesNotMatch(result, /\uFFFD/);
+});
