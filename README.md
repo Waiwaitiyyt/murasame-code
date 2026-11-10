@@ -1,5 +1,7 @@
 # 丛雨code · murasame
 
+**简体中文** | [English](README.en.md) | [日本語](README.ja.md)
+
 本项目采用 [GNU General Public License v3.0](LICENSE) 许可证。
 
 > 终端里的丛雨（千恋＊万花 · ムラサメ）AI 编程代理，用法类似 Claude Code。
