@@ -101,6 +101,13 @@
       z-index: 10;
     }
 
+    #pomodoro-card { position: absolute; top: 2px; left: 2px; width: 146px; padding: 4px 6px; border: 1px solid #d8b2c5; border-radius: 10px; background: #fff8fb; color: #684657; font: 10px sans-serif; z-index: 11; text-align: center; }
+    #pomodoro-card[hidden], #pet-wrapper:has(#speech-bubble[style*="display: block"]) #pomodoro-card { display: none; }
+    #pomodoro-card button { background: transparent; border: 0; color: inherit; cursor: pointer; font: inherit; padding: 1px 4px; }
+    #pomodoro-card button:focus-visible { outline: 2px solid #a96387; border-radius: 4px; }
+    #pomodoro-open { display: block; width: 100%; }
+    #pomodoro-time { font-size: 19px; font-weight: bold; font-variant-numeric: tabular-nums; }
+    #pomodoro-label { display: block; font-size: 10px; }
     #zzz-container {
       display: none;
       position: absolute;
@@ -169,6 +176,10 @@
     </div>
 
     <!-- UI覆盖元素 -->
+    <div id="pomodoro-card" hidden aria-label="番茄钟">
+      <button id="pomodoro-open" title="打开番茄钟面板"><span id="pomodoro-label"></span><span id="pomodoro-time" role="timer"></span></button>
+      <button id="pomodoro-toggle">暂停</button><button id="pomodoro-stop">结束</button>
+    </div>
     <div id="speech-bubble">ご主人～</div>
 
     <!-- 气泡曲线箭头：从气泡底部延伸指向角色脸部 -->
@@ -200,5 +211,6 @@
   </div>
 
   <script src="renderer.js"></script>
+  <script src="pomodoro-ui.js"></script>
 </body>
 </html>

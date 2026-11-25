@@ -421,6 +421,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // 点击穿透（Windows）
   initClickThrough(container);
 
+  // 计时卡片同样支持 Windows 鼠标交互。
+  initClickThrough(document.getElementById('pomodoro-card'));
+  ipcRenderer.on('pomodoro-reminder', (_event, message) => {
+    stateMachine.locked = false;
+    stateMachine.transition('happy', 7000);
+    const bubble = document.getElementById('speech-bubble');
+    bubble.textContent = message;
+    bubble.style.display = 'block';
+    document.getElementById('speech-arrow').style.display = 'block';
+  });
+
   // 统一处理所有点击逻辑
   let clickTimer = null;
   let quickClickCount = 0;

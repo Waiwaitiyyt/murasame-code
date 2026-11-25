@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>丛雨番茄钟</title>
+  <link rel="stylesheet" href="pomodoro.css">
+</head>
+<body>
+  <main>
+    <header><span class="eyebrow">MURASAME · 陪你专注</span><h1><svg width="25" height="25" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 10C4 4 0 19 8 26c4 4 12 4 17 0 9-8 2-22-9-16Z" fill="#cf7184"/><path d="m16 12-7-5 7 1 2-6 2 7 7-1-6 5-3-2Z" fill="#719b7b"/><path d="M8 17c-1 3 0 5 2 6" fill="none" stroke="#f4bec8" stroke-width="2" stroke-linecap="round"/></svg>番茄钟</h1><p>一段专注，一小步前进。</p></header>
+    <section class="clock" aria-label="计时控制">
+      <div id="phase">专注 · 第 1 轮</div>
+      <div id="time" role="timer">25:00</div>
+      <progress id="progress" max="1" value="0" aria-label="当前阶段进度"></progress>
+      <p id="status" aria-live="polite">准备好就开始吧～</p>
+      <div class="actions"><button id="toggle" class="primary">开始专注</button><button data-action="restart">重来</button><button data-action="stop">结束</button></div>
+    </section>
+    <section class="stats" aria-label="今日记录"><div><strong id="count">0</strong><span>今日番茄</span></div><div><strong id="minutes">0</strong><span>专注分钟</span></div></section>
+    <details>
+      <summary>计时与提醒设置</summary>
+      <form id="settings">
+        <div class="fields">
+          <label>专注（分钟）<input name="focus" type="number" min="1" max="180" required></label>
+          <label>短休息（分钟）<input name="shortBreak" type="number" min="1" max="180" required></label>
+          <label>长休息（分钟）<input name="longBreak" type="number" min="1" max="180" required></label>
+          <label>长休息间隔（轮）<input name="interval" type="number" min="1" max="12" required></label>
+        </div>
+        <label class="check"><input name="autoStart" type="checkbox">自动开始下一阶段</label>
+        <label class="check"><input name="notifications" type="checkbox">系统通知</label>
+        <label class="check"><input name="sound" type="checkbox">到点提示音</label>
+        <p class="hint">时长调整从下一阶段或重新开始时生效。</p>
+        <button type="submit" class="save">保存设置</button>
+      </form>
+    </details>
+    <p id="feedback" role="status"></p>
+    <footer>收起窗口后继续计时 · 退出后保留进度</footer>
+  </main>
+  <script src="pomodoro-ui.js"></script>
+</body>
+</html>

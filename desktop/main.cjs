@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, screen, ipcMain, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, Menu, Tray, screen, ipcMain, nativeImage, dialog, Notification, shell, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -11,7 +11,13 @@ const XLSX = require('xlsx');
 const { languageNames, detectLanguage, translator } = require('./i18n.cjs');
 const { workbenchTranslate } = require('./workbench-i18n.cjs');
 
+const { Pomodoro } = require('./pomodoro.cjs');
 const store = new Store();
+const pomodoro = new Pomodoro(store.get('pomodoro', {}));
+let pomodoroWindow = null;
+let pomodoroTimer = null;
+let lastPomodoroSave = 0;
+const pomodoroNotifications = new Set();
 const isWindows = process.platform === 'win32';
 const isLinux   = process.platform === 'linux';
 const isMac     = process.platform === 'darwin';
@@ -263,6 +269,7 @@ function buildMenu() {
         else createWindow();
       },
     },
+    { label: '番茄钟', click: () => openPomodoro() },
     { label: '打开丛雨code', click: () => createAppWindow() },
     { type: 'separator' },
     {
@@ -326,6 +333,67 @@ function setupTray() {
 
   tray.on('click', () => createAppWindow());
 }
+
+// ---- 番茄钟：计时独立于桌宠与控制面板窗口 ----
+function savePomodoro() {
+  store.set('pomodoro', pomodoro.snapshot());
+  lastPomodoroSave = Date.now();
+}
+
+function broadcastPomodoro() {
+  const state = pomodoro.snapshot();
+  for (const window of [mainWindow, pomodoroWindow]) {
+    if (window && !window.isDestroyed()) window.webContents.send('pomodoro-state', state);
+  }
+}
+
+function updatePomodoro() {
+  const completed = pomodoro.tick();
+  if (completed) {
+    const message = completed === 'focus' ? '辛苦啦，休息一下吧～' : '休息好了吗？一起继续专注吧～';
+    mainWindow?.webContents.send('pomodoro-reminder', message);
+    if (pomodoro.settings.sound) shell.beep();
+    if (pomodoro.settings.notifications && Notification.isSupported()) {
+      const notification = new Notification({ title: '丛雨番茄钟', body: message, silent: true });
+      pomodoroNotifications.add(notification);
+      notification.on('click', openPomodoro);
+      notification.on('close', () => pomodoroNotifications.delete(notification));
+      notification.show();
+    }
+  }
+  if (completed || Date.now() - lastPomodoroSave >= 30000) savePomodoro();
+  broadcastPomodoro();
+}
+
+function openPomodoro() {
+  if (pomodoroWindow) { pomodoroWindow.show(); pomodoroWindow.focus(); return; }
+  const bounds = mainWindow?.getBounds() || screen.getPrimaryDisplay().workArea;
+  const area = screen.getDisplayMatching(bounds).workArea;
+  const width = 340, height = Math.min(680, area.height);
+  const preferredX = bounds.x - width - 12 >= area.x ? bounds.x - width - 12 : bounds.x + bounds.width + 12;
+  pomodoroWindow = new BrowserWindow({
+    width, height, minWidth: 320, minHeight: Math.min(500, height),
+    x: Math.max(area.x, Math.min(preferredX, area.x + area.width - width)),
+    y: Math.max(area.y, Math.min(bounds.y, area.y + area.height - height)),
+    title: '丛雨番茄钟', backgroundColor: '#fff8fb', autoHideMenuBar: true,
+    alwaysOnTop: mainWindow?.isAlwaysOnTop() ?? true,
+    webPreferences: { nodeIntegration: true, contextIsolation: false },
+  });
+  pomodoroWindow.setMenu(null);
+  pomodoroWindow.loadFile(path.join(__dirname, 'pomodoro.html'));
+  pomodoroWindow.on('closed', () => { pomodoroWindow = null; });
+}
+
+ipcMain.on('open-pomodoro', openPomodoro);
+ipcMain.handle('get-pomodoro', () => { updatePomodoro(); return pomodoro.snapshot(); });
+ipcMain.handle('pomodoro-command', (_event, action, settings) => {
+  updatePomodoro();
+  if (action === 'settings') pomodoro.configure(settings || {});
+  else if (['start', 'pause', 'restart', 'stop'].includes(action)) pomodoro.action(action);
+  savePomodoro();
+  broadcastPomodoro();
+  return pomodoro.snapshot();
+});
 
 // ---- 自启动 ----
 
@@ -870,13 +938,16 @@ ipcMain.on('exit-application', () => app.quit());
 // ---- 应用生命周期 ----
 
 app.whenReady().then(() => {
+  if (isWindows) app.setAppUserModelId('com.murasame.desktop');
+  pomodoroTimer = setInterval(updatePomodoro, 1000);
+  powerMonitor.on('resume', updatePomodoro);
   refreshWorkbenchMenu();
   createWindow();
   setupTray();
   if (!process.argv.includes('--pet-only')) createAppWindow();
 });
 
-app.on('before-quit', () => { app.isQuitting = true; terminalProcess?.kill(); });
+app.on('before-quit', () => { app.isQuitting = true; clearInterval(pomodoroTimer); updatePomodoro(); savePomodoro(); terminalProcess?.kill(); });
 app.on('window-all-closed', () => { /* 保持后台托盘运行 */ });
 app.on('activate', () => {
   if (process.argv.includes('--pet-only')) {
