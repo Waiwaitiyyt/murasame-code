@@ -369,13 +369,13 @@ function openPomodoro() {
   if (pomodoroWindow) { pomodoroWindow.show(); pomodoroWindow.focus(); return; }
   const bounds = mainWindow?.getBounds() || screen.getPrimaryDisplay().workArea;
   const area = screen.getDisplayMatching(bounds).workArea;
-  const width = 340, height = Math.min(680, area.height);
+  const width = 300, height = Math.min(430, area.height);
   const preferredX = bounds.x - width - 12 >= area.x ? bounds.x - width - 12 : bounds.x + bounds.width + 12;
   pomodoroWindow = new BrowserWindow({
-    width, height, minWidth: 320, minHeight: Math.min(500, height),
+    width, height, resizable: false, frame: false,
     x: Math.max(area.x, Math.min(preferredX, area.x + area.width - width)),
     y: Math.max(area.y, Math.min(bounds.y, area.y + area.height - height)),
-    title: '丛雨番茄钟', backgroundColor: '#fff8fb', autoHideMenuBar: true,
+    title: '丛雨番茄钟', backgroundColor: '#fffaf8', autoHideMenuBar: true,
     alwaysOnTop: mainWindow?.isAlwaysOnTop() ?? true,
     webPreferences: { nodeIntegration: true, contextIsolation: false },
   });
@@ -385,6 +385,9 @@ function openPomodoro() {
 }
 
 ipcMain.on('open-pomodoro', openPomodoro);
+ipcMain.on('close-pomodoro', (event) => {
+  if (event.sender === pomodoroWindow?.webContents) pomodoroWindow.close();
+});
 ipcMain.handle('get-pomodoro', () => { updatePomodoro(); return pomodoro.snapshot(); });
 ipcMain.handle('pomodoro-command', (_event, action, settings) => {
   updatePomodoro();

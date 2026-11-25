@@ -7,34 +7,48 @@
   <link rel="stylesheet" href="pomodoro.css">
 </head>
 <body>
+  <header class="window-header">
+    <div class="portrait" aria-hidden="true"><div class="portrait-stage"><img data-portrait="body" alt=""><img data-portrait="face" alt=""><img data-portrait="hair" alt=""></div></div>
+    <div class="brand"><h1>丛雨的专注手帐<span class="sparkle" aria-hidden="true">✧</span></h1><p>今天也陪在你身边。</p></div>
+    <button id="close-panel" class="icon-button" aria-label="收起番茄钟" title="收起，继续计时"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 6 8 8M14 6l-8 8"/></svg></button>
+  </header>
   <main>
-    <header><span class="eyebrow">MURASAME · 陪你专注</span><h1><svg width="25" height="25" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 10C4 4 0 19 8 26c4 4 12 4 17 0 9-8 2-22-9-16Z" fill="#cf7184"/><path d="m16 12-7-5 7 1 2-6 2 7 7-1-6 5-3-2Z" fill="#719b7b"/><path d="M8 17c-1 3 0 5 2 6" fill="none" stroke="#f4bec8" stroke-width="2" stroke-linecap="round"/></svg>番茄钟</h1><p>一段专注，一小步前进。</p></header>
-    <section class="clock" aria-label="计时控制">
+    <nav class="tabs" aria-label="番茄钟页面"><button id="timer-tab" aria-current="page" aria-controls="timer-view">专注时光</button><button id="settings-tab" aria-controls="settings-view">小小设置</button></nav>
+    <section id="timer-view" aria-label="计时控制">
       <div id="phase">专注 · 第 1 轮</div>
-      <div id="time" role="timer">25:00</div>
-      <progress id="progress" max="1" value="0" aria-label="当前阶段进度"></progress>
+      <div class="dial">
+        <svg class="dial-ring" viewBox="0 0 160 160" aria-hidden="true"><circle class="ring-track" cx="80" cy="80" r="72"/><circle id="ring-progress" cx="80" cy="80" r="72" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/></svg>
+        <div class="dial-content"><span class="dial-flower" aria-hidden="true">✿</span><div id="time" role="timer">25:00</div><span id="dial-caption">一小段专注，一点点进步</span></div>
+      </div>
+      <progress id="progress" class="sr-only" max="1" value="0" aria-label="当前阶段进度"></progress>
       <p id="status" aria-live="polite">准备好就开始吧～</p>
-      <div class="actions"><button id="toggle" class="primary">开始专注</button><button data-action="restart">重来</button><button data-action="stop">结束</button></div>
+      <div class="actions">
+        <button data-action="restart" class="icon-button secondary" aria-label="重新开始当前阶段" title="重新开始"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5a7 7 0 1 1-1.5 7M5 2v4H1"/></svg></button>
+        <button id="toggle" class="primary">开始专注</button>
+        <button data-action="stop" class="icon-button secondary" aria-label="结束番茄钟" title="结束"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="2"/></svg></button>
+      </div>
+      <section class="stats" aria-label="今日记录"><div><span class="stat-flower" aria-hidden="true">✿</span><strong id="count">0</strong><span>颗番茄</span></div><span class="stats-divider"></span><div><strong id="minutes">0</strong><span>分钟专注</span></div><span class="today-label">今日</span></section>
+      <footer>慢慢来，丛雨陪着你 <span aria-hidden="true">♡</span></footer>
     </section>
-    <section class="stats" aria-label="今日记录"><div><strong id="count">0</strong><span>今日番茄</span></div><div><strong id="minutes">0</strong><span>专注分钟</span></div></section>
-    <details>
-      <summary>计时与提醒设置</summary>
+    <section id="settings-view" hidden aria-label="计时与提醒设置">
       <form id="settings">
+        <div class="section-label">自己的节奏 <span>分钟 / 轮</span></div>
         <div class="fields">
-          <label>专注（分钟）<input name="focus" type="number" min="1" max="180" required></label>
-          <label>短休息（分钟）<input name="shortBreak" type="number" min="1" max="180" required></label>
-          <label>长休息（分钟）<input name="longBreak" type="number" min="1" max="180" required></label>
-          <label>长休息间隔（轮）<input name="interval" type="number" min="1" max="12" required></label>
+          <label>专注时间<input name="focus" type="number" min="1" max="180" required></label>
+          <label>短暂休息<input name="shortBreak" type="number" min="1" max="180" required></label>
+          <label>长长休息<input name="longBreak" type="number" min="1" max="180" required></label>
+          <label>长休息间隔<input name="interval" type="number" min="1" max="12" required></label>
         </div>
-        <label class="check"><input name="autoStart" type="checkbox">自动开始下一阶段</label>
-        <label class="check"><input name="notifications" type="checkbox">系统通知</label>
-        <label class="check"><input name="sound" type="checkbox">到点提示音</label>
+        <div class="preferences">
+          <label class="check"><span>自动开始下一段</span><input name="autoStart" type="checkbox"><span class="switch" aria-hidden="true"></span></label>
+          <label class="check"><span>系统通知</span><input name="notifications" type="checkbox"><span class="switch" aria-hidden="true"></span></label>
+          <label class="check"><span>到点提示音</span><input name="sound" type="checkbox"><span class="switch" aria-hidden="true"></span></label>
+        </div>
         <p class="hint">时长调整从下一阶段或重新开始时生效。</p>
-        <button type="submit" class="save">保存设置</button>
+        <button type="submit" class="primary save">就这样，保存好啦</button>
       </form>
-    </details>
+    </section>
     <p id="feedback" role="status"></p>
-    <footer>收起窗口后继续计时 · 退出后保留进度</footer>
   </main>
   <script src="pomodoro-ui.js"></script>
 </body>
