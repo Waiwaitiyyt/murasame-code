@@ -269,8 +269,8 @@ function buildMenu() {
         else createWindow();
       },
     },
-    { label: '番茄钟', click: () => openPomodoro() },
-    { label: '打开丛雨code', click: () => createAppWindow() },
+    { label: t('pomodoro'), click: () => openPomodoro() },
+    { label: t('openApp'), click: () => createAppWindow() },
     { type: 'separator' },
     {
       label: t('costume'),
